@@ -566,7 +566,7 @@ dependencies {
 ```
 - ``@SpringBootApplication``을 위한 클래스 등록
 ```java
-package com.sp.fc;
+package com.sp.fc.web;
 ....
 @SpringBootApplication
 public class BasicTestApplication {
@@ -575,9 +575,60 @@ public class BasicTestApplication {
     }
 }
 ```
-- ``server/basic-test/src/main/resources/application.yml``파일 생성 및 내용 등록
+- ``server/basic-test/src/main/resources/application.yml``파일 생성 및 서버 포트 설정
 ```yaml
 server:
   port: 9050
 ```
-02:00
+- Controller Class 작성
+```java
+package com.sp.fc.web.controller;
+....
+@RestController
+public class HomeController {
+    @RequestMapping("/")
+    public String index() {
+        return "홈페이지";
+    }
+}
+```
+- 서버 부팅 후, Browser를 통해 ``http://localhost:9050``에 접속하면 로그인 팝업 창이 뜸: 기본적으로 Spring Security가 동작하고 있기 때문
+![localhost_on_spring_security](./images/localhost_on_spring_security.png)
+- 기본적인 사용자 명인 ``user``와 서버의 로그에 찍히는 패스워드를 이용해서 로그인 하면 됨
+```bash
+2022-06-27 22:52:41.497  INFO 11076 --- [  restartedMain] .s.s.UserDetailsServiceAutoConfiguration : 
+Using generated security password: c3283119-f124-4938-846a-055a2c35cba5
+2022-06-27 22:52:41.613  INFO 11076 --- [  restartedMain] o.s.s.web.Def
+```
+- 로그인하면, 원하는 내용이 웹브라우저에 표시됨
+![localhost_after_login](./images/localhost_after_login.png)
+- 매번 암호를 확인해서 입력하기 힘들므로, ``server/basic-test/src/main/resources/application.yml``에 암호를 설정해서 사용할 수 있음
+```yaml
+server:
+  port: 9050
+spring:
+  security:
+    user:
+      name: user1
+      password: 1111
+      roles: USER
+```
+- 현재 사용하고 있는 Authentication 정보를 브라우저에 찍어보는 방법
+  - ``SecurityContextHolder``의 Context에서 Authentication 정보를 찍어봄
+  - 브라우저에서 ``localhost:9050/auth``에 접속
+```java
+package com.sp.fc.web.controller;
+....
+@RestController
+public class HomeController {
+    ....
+    @RequestMapping("/auth")
+    public Authentication auth() {
+        return SecurityContextHolder
+                .getContext()
+                .getAuthentication();
+    }
+}
+```
+![Authentification_Info](./images/Authentification_Info.png)
+05:00

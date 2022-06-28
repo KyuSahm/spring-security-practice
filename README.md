@@ -556,7 +556,7 @@ dependencies {
 3. 어플리케이션 객체에 ``UserDetailsService Bean``을 만들어서 로그인을 한다.
 4. ``SecurityConfig``를 만들고 이를 통해 로그인 한다.
 5. ``SecurityMessage (UserDetails, message)`` 를 통해 /user 페이지와 /admin 페이지 접근 권한을 테스트 한다.
-## 실습 내용
+## 실습한 내용
 - ``git checkout 1-gradle-setting``로 브랜치 변경
 - ``server/basic-test/build.gradle`` 파일을 수정
 ```groovy
@@ -631,4 +631,165 @@ public class HomeController {
 }
 ```
 ![Authentification_Info](./images/Authentification_Info.png)
-05:00
+- Controller Method에 대한 접근 권한 설정 방법
+  - 참조: https://copycoding.tistory.com/278
+  - 방법1: ``WebSecurityConfigureAdapter``를 상속한 ``WebSecurityConfig``를 작성
+  - 방법2: Controller에 annotation을 추가하여 관리하는 방법
+    - ``@PreAuthorize, @PostAuthorize, @Secured``를 사용('hasRole)
+```java
+package com.sp.fc.web.controller;
+....
+@RestController
+public class HomeController {
+    ....
+    @PreAuthorize("hasAnyAuthority('ROLE_USER')")
+    @RequestMapping("/user")
+    public SecurityMessage user() {
+        return SecurityMessage.builder()
+                .auth(SecurityContextHolder.getContext().getAuthentication())
+                .message("사용자 정보")
+                .build();
+    }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
+    @RequestMapping("/admin")
+    public SecurityMessage admin() {
+        return SecurityMessage.builder()
+                .auth(SecurityContextHolder.getContext().getAuthentication())
+                .message("관리자 정보")
+                .build();
+    }
+}
+
+package com.sp.fc.web.dto;
+....
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+public class SecurityMessage {
+    private Authentication auth;
+    private String message;
+}
+```
+- 하지만, ``USER`` 권한을 갖는 ``user1``이 ``localhost:9050/user``과 ``localhost:9050/admin``에 모두 접근 가능한 문제가 발생
+  - **정보 탈취의 가능성이 있음**
+  - 해결 방법: ``WebSecurityConfigurerAdapter``를 상속한 WebSecurityConfig를 선언
+    - ``@EnableWebSecurity``와 ``@EnableGlobalMethodSecurity(prePostEnabled = true)`` annotate해서 Method의 ``@PreAuthorize``와 ``@PostAuthorize``를 가능하도록 설정하면 됨
+```java
+package com.sp.fc.web.config;
+....
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+}
+```
+- ``user1``으로 접속한 후, ``localhost:9050/admin``에 접속하면 ``403`` 에러가 발생
+![admin_page_403_error](./images/admin_page_403_error.png)
+- ``applcation.yml``에서는 하나의 User만 설정해서 사용가능
+  - ``AuthenticationManagerBuilder`` ``inMemoryAuthentification``을 이용하여 사용자를 추가할 수 있음
+  - ``inMemoryAuthentification``을 사용하면 더 이상 ``application.yml``에 등록한 사용자는 사용 못하게 됨
+    - ``Bad credentials`` 에러가 발생
+  - **아래와 같이 명시하면, Password Encoder를 사용하지 않아서 서버에서 에러가 발생함**
+```java
+package com.sp.fc.web.config;
+.....
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.inMemoryAuthentication()
+                .withUser(User.builder()
+                        .username("user2")
+                        .password("2222")
+                        .roles("USER"))
+                .withUser(User.builder()
+                        .username("admin")
+                        .password("3333")
+                        .roles("ADMIN"));
+    }
+}
+```
+```bash
+2022-06-28 23:18:52.450 ERROR 23948 --- [nio-9050-exec-8] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception
+
+java.lang.IllegalArgumentException: There is no PasswordEncoder mapped for the id "null"
+	at org.springframework.security.crypto.password.DelegatingPasswordEncoder$UnmappedIdPasswordEncoder.matches(DelegatingPasswordEncoder.java:254) ~[spring-security-core-5.4.2.jar:5.4.2]
+	at org.springframework.security.crypto.password.DelegatingPasswordEncoder.matches(DelegatingPasswordEncoder.java:202) ~[spring-security-core-5.4.2.jar:5.4.2]
+	at org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter$LazyPasswordEncoder.matches(WebSecurityConfigurerAdapter.java:595) ~[spring-security-config-5.4.2.jar:5.4.2]
+	at org.springframework.security.authentication.dao.DaoAuthenticationProvider.additionalAuthenticationChecks(DaoAuthenticationProvider.java:76) ~[spring-security-core-5.4.2.jar:5.4.2]
+```
+- 아래의 코드처럼, Password Encoder를 사용해서 비밀번호를 암호화 처리
+  - admin으로 ``localhost:9050/admin, localhost:9050, localhost:9050/auth``에 접속되지만,
+  - ``localhost:9050/user``에는 접속 안됨
+```java
+package com.sp.fc.web.config;
+....
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.inMemoryAuthentication()
+                .withUser(User.builder()
+                        .username("user2")
+                        .password(passwordEncoder().encode("2222"))
+                        .roles("USER"))
+                .withUser(User.builder()
+                        .username("admin")
+                        .password(passwordEncoder().encode("3333"))
+                        .roles("ADMIN"));
+    }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+}
+```
+- 주소에 ``http://localhost:9050/logout``을 입력해서 로그아웃 할 수 있음
+- Spring Security는 기본적으로 모든 페이지(/, /auth, /user, /admin)를 로그인이 없이는 사용 못하도록 막음
+  - 왜냐면, ``WebSecurityConfigurerAdapter``의 ``configure()`` 메소드가 모든 페이지를 인증을 한 후, 사용하도록 설정
+    - ``http.authorizeRequests((requests) -> requests.anyRequest().authenticated());``
+```java
+public abstract class WebSecurityConfigurerAdapter implements WebSecurityConfigurer<WebSecurity> {
+....    
+    protected void configure(HttpSecurity http) throws Exception {
+		this.logger.debug("Using default configure(HttpSecurity). "
+				+ "If subclassed this will potentially override subclass configure(HttpSecurity).");
+		http.authorizeRequests((requests) -> requests.anyRequest().authenticated());
+		http.formLogin();
+		http.httpBasic();
+	}
+....
+}    
+```    
+- 만약, 특정 페이지(``/``)는 로그인 없이 사용하기를 원한다면?
+  - ``protected void configure(HttpSecurity http) throws Exception`` 함수를 재정의 하면 됨
+  - ``antMatchers``를 이용해서, ``/``은 로그인 없이 사용하도록 ``permitAll()``을 호출 
+  - ``antMatchers``로 맵핑되지 않은 페이지들은 ``anyRequest().authenticated()``를 이용해서 로그인을 요청
+```java
+package com.sp.fc.web.config;
+....
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+    .....
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests((requests) ->
+                requests.antMatchers("/").permitAll()
+                        .anyRequest().authenticated());
+        http.formLogin();
+        http.httpBasic();
+    }
+    ....
+}
+``` 
+- 서버 재시작 후, ``http://localhost:9050/``은 로그인 없이 접근 가능 
+- 다른 페이지로 접근하면, 로그인을 요청 받음
+- 전체 소스
+  - ``.\practice\03. 스프링 시큐리티란\sp-fastcampus-spring-sec`` 참조
+# Spring Security의 전체 구조
+## Spring Security의 큰그림

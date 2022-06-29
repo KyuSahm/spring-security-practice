@@ -792,4 +792,199 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 - 전체 소스
   - ``.\practice\03. 스프링 시큐리티란\sp-fastcampus-spring-sec`` 참조
 # Spring Security의 전체 구조
-## Spring Security의 큰그림
+## Servlet Container
+- ``Tomcat``와 같은 웹 애플리케이션을 ``Servlet Container``라고 부르는데, 이런 웹 애플리케이션(J2EE Application)은 기본적으로 ``Filter``와 ``Servlet``으로 구성되어 있음
+![fig-1-servlet-container](./images/fig-1-servlet-container.png)
+- Filter은 Chain처럼 엮여있기 때문에 ``Filter Chain``이라고도 불리는데, 모든 request는 이 ``Filter Chain``을 반드시 거쳐야만 Servlet 서비스에 도착하게 됨
+## Spring Security의 큰 그림
+- 그래서 ``Spring Security``는 ``DelegatingFilterProxy``라는 필터를 만들어 ``Main Filter Chain``에 끼워넣고, 그 아래 다시 ``SecurityFilterChain Group``을 등록함
+- 결국, ``DelegatingFilterProxy``를 이용하여 API에 따라서 동작시키는 ``Filter Chain``을 다르게 가져갈 수 있음
+![fig-2-spring-big-picture](./images/fig-2-spring-big-picture.png)
+- 이 ``Filter Chain``은 반드시 한 개 이상이고, ``URL Pattern``에 따라 적용되는 필터체인을 다르게 할 수 있음
+- 본래의 Main Filter를 반드시 통과해야만 Servlet에 들어갈 수 있는 단점을 보완하기 위해서 ``Filter Chain Proxy(DelegatingFilterProxy)``를 두었다고 할 수 있음
+- ``web resource``의 경우 Pattern을 따르더라도 Filter를 무시(ignore)하고 통과시켜주기도 함
+## Security Filters
+- 이 ``Filter Chain``에는 다양한 필터들이 들어갑니다.
+![fig-4-filters](./images/fig-4-filters.png)
+- 각각의 Filter는 **단일 Filter 단일 책임(?)원칙**처럼, 각기 서로 다른 관심사를 해결함. 예를 들면 아래와 같음
+  - ``HeaderWriterFilter`` : Http Header를 검사한 후, 필요한 Header를 추가하거나 삭제
+  - ``CorsFilter`` : 허가된 사이트나 클라이언트의 요청인지 검사
+  - ``CsrfFilter`` : POST나 PUT과 같이 서버 Resource를 변경하는 경우, 서버가 내려보낸 Resource에서 올라온 요청인지 검사 (중요)
+  - ``LogoutFilter`` : 현재의 Request가 로그아웃을 하겠다는 건지 검사
+  - ``UsernamePasswordAuthenticationFilter`` : 현재의 Request가 ``username / password`` 로 로그인을 하려는지 검사 후, 로그인 정보를 이용하여 Authentification을 사용자에게 부여해 주거나 인증 실패 처리를 해줌
+  - ``ConcurrentSessionFilter`` : 하나의 사용자가 동시에 여기저기서 로그인 하는걸 허용할 것인가?
+  - ``BearerTokenAuthenticationFilter`` : Authorization Header에 Bearer 토큰을 검사해서 인증 처리
+  - ``BasicAuthenticationFilter`` : Authorization Header에 Basic 토큰을 검사해서 인증처리
+  - ``RequestCacheAwareFilter`` : 방금 요청한 request 이력이 다음에 필요할 수 있으니 캐시에 담아놓는 역할
+  - ``SecurityContextHolderAwareRequestFilter`` : 보안 관련 Servlet 3 스펙을 지원하기 위한 Filter
+  - ``RememberMeAuthenticationFilter`` : ``RememberMe``는 세션이 만료되더라도 Login을 다시하지 않고, 사용하도록 처리해주는 기능. 아직 Authentication 인증이 안된 경우라면 ``RememberMe Cookie``를 검사해서 인증 처리해주는 기법
+  - ``AnonymousAuthenticationFilter`` : Filter Chain의 이전 Filter들에 의해서 아직도 인증이 되지 않았다면 Anonymous User로 Authentification을 채워주는 역할
+  - ``SessionManagementFilter`` : 서버에서 지정한 세션정책에 맞게 사용자가 사용하는지 검사
+  - ``ExceptionTranslationFilter`` : 해당 Filter 이후(``FilterSecurityInterceptor``)에 인증이나 권한 예외가 발생하면 ``ExceptionTranslationFilter``가 잡아서 처리
+  - ``FilterSecurityInterceptor`` : 여기까지 살아서 왔다면 Authentification이 있다는 거니, 사용자  request의 Controller Method 들어갈 권한이 있는지, 리턴한 결과를 사용자에게 보내줘도 되는건지 마지막으로 점검
+  - 그 밖에... ``OAuth2, Saml2, Cas, X509`` 등에 관한 Filter들도 있음
+- Filter는 넣거나 뺄 수 있고, 순서를 조절할 수 있음 (이때, 필터의 순서가 매우 critical 할 수 있기 때문에 기본 필터들은 그 순서가 어느정도 정해져 있음)
+## 특정 Request에서 어떤 Filter들이 동작하는 확인하는 방법
+- ``WebSecurityConfigurerAdapter``를 상속받아서 구현한 클래스에 ``@EnableWebSecurity(debug = true)`` annotation에서 ``debug`` 옵션을 켜줌
+```java
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+....
+}
+```
+```bash
+....
+servletPath:/admin
+pathInfo:null
+headers: 
+host: localhost:9050
+user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:101.0) Gecko/20100101 Firefox/101.0
+accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+accept-language: en-US,en;q=0.5
+accept-encoding: gzip, deflate, br
+referer: http://localhost:9050/login
+connection: keep-alive
+cookie: JSESSIONID=8F88F2B96AE73D48A0F1DC01AEF67C5B
+upgrade-insecure-requests: 1
+sec-fetch-dest: document
+sec-fetch-mode: navigate
+sec-fetch-site: same-origin
+sec-fetch-user: ?1
+
+
+Security filter chain: [
+  WebAsyncManagerIntegrationFilter
+  SecurityContextPersistenceFilter
+  HeaderWriterFilter
+  CsrfFilter
+  LogoutFilter
+  UsernamePasswordAuthenticationFilter
+  DefaultLoginPageGeneratingFilter
+  DefaultLogoutPageGeneratingFilter
+  BasicAuthenticationFilter
+  RequestCacheAwareFilter
+  SecurityContextHolderAwareRequestFilter
+  AnonymousAuthenticationFilter
+  SessionManagementFilter
+  ExceptionTranslationFilter
+  FilterSecurityInterceptor
+]
+....
+```
+- ``WebSecurityConfigurerAdapter``를 상속한 클래스의 ``configure(HttpSecurity http)`` 메소드에서 다양한 Filter들을 Enable/Disable 시킬 수 있음
+  - ``http.authorizeRequests(), http.formLogin(), http.httpBasic()``를 주석처리하게 되면, 아래의 Filter들을 사용하지 않게 됨
+    - ``UsernamePasswordAuthenticationFilter``
+    - ``DefaultLoginPageGeneratingFilter`` 
+    - ``DefaultLogoutPageGeneratingFilter``
+    - ``BasicAuthenticationFilter``
+    - ``FilterSecurityInterceptor``
+```java
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+    ....
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+//        http.authorizeRequests((requests) ->
+//                requests.antMatchers("/").permitAll()
+//                        .anyRequest().authenticated());
+//        http.formLogin();
+//        http.httpBasic();
+    }
+    ....
+}
+```
+```bash
+...
+Security filter chain: [
+  WebAsyncManagerIntegrationFilter
+  SecurityContextPersistenceFilter
+  HeaderWriterFilter
+  CsrfFilter
+  LogoutFilter
+  RequestCacheAwareFilter
+  SecurityContextHolderAwareRequestFilter
+  AnonymousAuthenticationFilter
+  SessionManagementFilter
+  ExceptionTranslationFilter
+]
+...
+```
+- 아래의 코드처럼, ``Filter Chain``에서 다양한 Filter들을 disable시킬 수 있음 
+  - ``HeaderWriterFilter``
+  - ``CsrfFilter``
+  - ``LogoutFilter``
+  - ``RequestCacheAwareFilter``  
+```java
+package com.sp.fc.web.config;
+....
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+//        http.authorizeRequests((requests) ->
+//                requests.antMatchers("/").permitAll()
+//                        .anyRequest().authenticated());
+//        http.formLogin();
+//        http.httpBasic();
+        http.headers().disable()
+            .csrf().disable()
+            .logout().disable()
+            .requestCache().disable();
+    }
+}
+```
+```bash
+......
+Security filter chain: [
+  WebAsyncManagerIntegrationFilter
+  SecurityContextPersistenceFilter
+  SecurityContextHolderAwareRequestFilter
+  AnonymousAuthenticationFilter
+  SessionManagementFilter
+  ExceptionTranslationFilter
+]
+```
+- 특정 API에 대해서 Filter Chain을 적용하고 싶은 경우
+  - ``WebSecurityConfigurerAdapter``를 상속한 클래스의 ``configure(HttpSecurity http)`` 메소드에서 ``HttpSecurity``에 ``antMatcher()``를 적용하면 됨
+```java
+package com.sp.fc.web.config;
+....
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+       // 모든 API에 대해 아래의 Filter Chain 적용
+       // http.antMatcher("/**");
+       // "/api" 아래의 모든 API에 대해 아래의 Filter Chain 적용
+       http.antMatcher("/api/**");
+       http.authorizeRequests((requests) ->
+               requests.antMatchers("/").permitAll()
+                       .anyRequest().authenticated());
+       http.formLogin();
+       http.httpBasic();
+    }
+}
+```
+- 두 개 이상의 ``Filter Chain``을 구성하고 싶다면?
+  - ``WebSecurityConfigurerAdapter``를 상속한 여러 개의 Config Class를 정의하면 됨
+  - 여러 개의 클래스(``Filter Chain``)가 있으므로, ``@Order`` Annotation을 통해서 순서를 지정해 줌
+```java
+package com.sp.fc.web.config;
+....
+@Order(1)
+@EnableWebSecurity(debug = true)
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+    .....
+}
+```
+## 실습하기
+- 필터 설정하고 확인하기
+- 필터를 ignore 하기
+- 서로 다른 필터 체인을 타도록 하기
+
+02.로그인하기 - 00:00

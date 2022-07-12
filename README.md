@@ -987,4 +987,45 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 - 필터를 ignore 하기
 - 서로 다른 필터 체인을 타도록 하기
 
-02.로그인하기 - 00:00
+## 로그인하기
+- Spring Framework에서 로그인을 한다는 것은 authenticated 가 true인 ``Authentication`` 객체를 ``SecurityContext``에 갖고 있는 상태를 말함
+  - 단, Authentication이 AnonymousAuthenticationToken만 아니면 됨
+  ```
+  로그인 == Authentication(authenticated = true) only if Authentication != AnonymousAuthenticationToken
+  ```
+### Authentication (인증)의 기본 구조
+- Filter들 중에 일부 Filter는 인증 정보에 관여
+  - 이들 Filter가 하는 일은 ``AuthenticationManager``를 통해 Authentication을 인증하고 그 결과를 SecurityContextHolder에 넣어주는 일임
+  - ``ProviderManger``은 ``AuthenticationManager``의 구현체 클래스
+  - ``ProviderManger``은 parent란 참조를 통해 다른 ``ProviderManger``를 가리킴
+  - ``ProviderManger``은 여러 개의 ``AuthenticationProvider``로 구성
+![fig-3-authentication](./images/fig-3-authentication.png)
+- Authentication(인증 토큰)을 제공하는 Filter들
+  - ``UsernamePasswordAuthenticationFilter``
+    - 폼 로그인 -> ``UsernamePasswordAuthenticationToken``
+  - ``RememberMeAuthenticationFilter``
+    - ``remember-me Cookie`` 로그인 -> ``RememberMeAuthenticationToken``
+  - ``AnonymousAuthenticationFilter``
+    - 로그인하지 않았다는 것을 인증함 -> ``AnonymousAuthenticationToken``
+  - ``SecurityContextPersistenceFilter``
+    - 기존 로그인을 유지함(기본적으로 ``session``을 이용)
+  - ``BearerTokenAuthenticationFilter``
+    - ``JWT`` 로그인
+  - ``BasicAuthenticationFilter``
+    - ``Authorization`` Header에 Username과 Password를 담아서 Base64로 Encoding해서 보내줌
+    - ``ajax`` 로그인 -> ``UsernamePasswordAuthenticationToken``
+  - ``OAuth2LoginAuthenticationFilter``
+    - 소셜 로그인 -> ``OAuth2LoginAuthenticationToken, OAuth2AuthenticationToken``
+  - ``OpenIDAuthenticationFilter``
+    - ``OpenID`` 로그인
+  - ``Saml2WebSsoAuthenticationFilter``
+    - ``SAML2`` 로그인
+  - ... 기타
+- Authentication을 제공(Provide) 하는 인증제공자는 여러 개가 동시에 존재할 수 있고, 인증 방식에 따라 ``ProviderManager``도 복수로 존재할 수 있음
+- ``Authentication``은 Interface로 아래와 같은 정보들을 갖고 있음
+  - ``Set<GrantedAuthority> authorities``: 인증된 권한 정보
+  - ``principal``: 인증 대상에 관한 정보. 주로 ``UserDetails`` 객체가 옴
+  - ``credentials``: 인증 확인을 위한 정보. 주로 ``Login Id or Password``가 오지만, ``Password``는 인증 후에는 보안을 위해 삭제함
+  - ``details``: 로그인 Request에 대한 상세 정보. ``IP, 세션정보, 기타 인증요청에서 사용했던 정보``들.
+  - ``boolean authenticated``: 인증이 되었는지를 체크
+

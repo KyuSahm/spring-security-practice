@@ -1216,21 +1216,224 @@ public class LogoutFilter extends GenericFilterBean {
 - 로그인 실패시 설정
 - 로그아웃 설정
 - ``UserDetailsSource`` 설정
+#### build.gradle 설정
+- ``D:\Workspace\spring-security-practice\practice\03-2. Basic Login\sp-fastcampus-spring-sec\server\login-basic\build.gradle``
+  - ``thymeleaf`` library 관련 라이브러리 설정 (Spring Security관련된 것도 포함)
+  ```groovy
+  dependencies {
 
-#### 코드 조각
+    implementation("$boot:spring-boot-starter-web")
+    implementation("$boot:spring-boot-starter-thymeleaf")
+    implementation("org.thymeleaf.extras:thymeleaf-extras-springsecurity5")
+    implementation("nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect")
+  }
+  ```
+#### 코드
+- Step 01. 코드의 초기 상태
+  - 디자이너가 생성해준 thymeleaf를 포함하고 있는 template html이 존재
+  - 모든 URL에 대해 Security Filter가 존재하지 않아서 권한 체크없이 접근 가능한 상태
+  - 아래 페이지는 "/" 페이지에 접근한 상태
+![Basic_Login_Root](./images/Basic_Login_Root.png)  
+```java
+package com.sp.fc.web.controller;
+....
+@Controller
+public class HomeController {
 
-- resource web ignore 설정
+    @GetMapping("/")
+    public String main(){
+        return "index";
+    }
 
-  ```java
+    @GetMapping("/login")
+    public String login(){
+        return "loginForm";
+    }
+
+    @GetMapping("/login-error")
+    public String loginError(Model model){
+        model.addAttribute("loginError", true);
+        return "loginForm";
+    }
+
+    @GetMapping("/access-denied")
+    public String accessDenied(){
+        return "AccessDenied";
+    }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_USER')")
+    @GetMapping("/user-page")
+    public String userPage(){
+        return "UserPage";
+    }
+
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
+    @GetMapping("/admin-page")
+    public String adminPage(){
+        return "AdminPage";
+    }
+}
+
+package com.sp.fc.web.config;
+.....
+@EnableWebSecurity(debug = true)
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
     @Override
-    public void configure(WebSecurity web) throws Exception {
-        web.ignoring()
-                .requestMatchers(
-                        PathRequest.toStaticResources().atCommonLocations()
-                )
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+                .authorizeRequests(request->{
+                    request
+                            .antMatchers("/**").permitAll()
+                            ;
+                })
                 ;
     }
+}
+```
+- Step 02. ``Root Context``에 대해서는 모두가 접근 가능하고, 다른 페이지들은 인증이 필요한 상태로 변경
+  - "/"에 접근하면, 아래 이미지처럼 ``css와 js``가 다운로드되지 않아서 문제가 발생
+![Basic_Login_Root_2](./images/Basic_Login_Root_2.png)
+  - ``WebSecurity``에 대해 정적 Resource를 포함하는 Path에 대해서 ``HttpSecurity``에 의한 Security Filter를 체크하지 않도록 변경
+![WebSecurity_Configure](./images/WebSecurity_Configure.png)
+  - ``http://localhost:9051`` Root Page를 제외하면, 모두 403 error ("Access Denied")가 발생 
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests(request -> {
+                      request
+                              .antMatchers("/").permitAll()
+                              .anyRequest().authenticated()()
+                      ;
+                  })
+          ;
+      }
+
+      @Override
+      public void configure(WebSecurity web) throws Exception {
+          web.ignoring()
+                  .requestMatchers(
+                          PathRequest.toStaticResources().atCommonLocations()
+                  );
+      }
+  }
   ```
+- Step 03. 일단 권한이 없는 페이지에 접근하는 경우 Form Login 페이지로 이동하도록 설정
+  - ``HttpSecurity``에 인자없이 ``formLogin()``을 추가
+    - HomeController의 ``/login``이 아닌 ``DefaultLoginPageGeneratingFilter``가 생성한 페이지를 사용
+  ```java
+  package com.sp.fc.web.config;
+  .....
+  @EnableWebSecurity(debug = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests(request -> {
+                      request
+                              .antMatchers("/").permitAll()
+                              .anyRequest().authenticated();
+                  }).formLogin();
+      }
+      ....
+  }
+  ```
+  ```bash
+  ************************************************************
+  Request received for GET '/login':
+
+  org.apache.catalina.connector.RequestFacade@36db1f66
+
+  servletPath:/login
+  pathInfo:null
+  headers: 
+  host: localhost:9051
+  connection: keep-alive
+  sec-ch-ua: ".Not/A)Brand";v="99", "Google Chrome";v="103", "Chromium";v="103"
+  sec-ch-ua-mobile: ?0
+  sec-ch-ua-platform: "Windows"
+  upgrade-insecure-requests: 1
+  user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36
+  accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+  sec-fetch-site: none
+  sec-fetch-mode: navigate
+  sec-fetch-user: ?1
+  sec-fetch-dest: document
+  accept-encoding: gzip, deflate, br
+  accept-language: ko,ko-KR;q=0.9,en-US;q=0.8,en;q=0.7
+  cookie: Idea-f0de6e50=da80e525-5e47-4853-b218-f3ccc047f11d; JSESSIONID=206260DA7D5832AFB17D7486D78D64A4
+
+
+  Security filter chain: [
+    WebAsyncManagerIntegrationFilter
+    SecurityContextPersistenceFilter
+    HeaderWriterFilter
+    CsrfFilter
+    LogoutFilter
+    UsernamePasswordAuthenticationFilter
+    DefaultLoginPageGeneratingFilter
+    DefaultLogoutPageGeneratingFilter
+    RequestCacheAwareFilter
+    SecurityContextHolderAwareRequestFilter
+    AnonymousAuthenticationFilter
+    SessionManagementFilter
+    ExceptionTranslationFilter
+    FilterSecurityInterceptor
+  ]
+  ************************************************************
+  ```
+- Step 03-1. Custom Login Page를 사용하도록 설정
+  - ``HttpSecurity``에 ``formLogin()``의 Lambda 함수를 통해 로그인 페이지("/login") 지정
+  - ``Login Page("/login")``가 인증이 필요하면 무한루프가 발생
+    - ``permitAll()``을 통해서 권한없이 접근 가능하도록 허용
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests(request -> {
+                      request
+                              .antMatchers("/").permitAll()
+                              .anyRequest().authenticated();
+                  }).formLogin(
+                          t -> t.loginPage("/login").permitAll()
+                  );
+      }
+      ....
+  }
+  ```
+09:17  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### 코드 조각
 
 - 로그인 사용자
 

@@ -1196,13 +1196,13 @@ public class LogoutFilter extends GenericFilterBean {
     - ``void onLogoutSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication)
     throws IOException, ServletException``
   - ``SimpleUrlLogoutSuccessHandler``
-### Basic-Login 실습
+## Basic-Login 실습
 - 기획자가 아래와 같은 사이트를 기획했다고 가정
 ![fig-5-user-login](./images/fig-5-user-login.png)
 - 디자이너는 이 사이트를 아래와 같이 디자인 했다고 가정
 ![fig-5-user-login-design](./images/fig-5-user-login-design.png)
 - 로그인 페이지를 만들고 기본적인 페이지의 flow 를 실습
-#### Page에 Security 설정하기
+### Page에 Security 설정하기
 - ``thymeleaf``에 대한 의존성 추가
 - ``bootstrap``을 이용해 기본 페이지 제작
 - 기본 로그인 페이지 제작
@@ -1211,7 +1211,7 @@ public class LogoutFilter extends GenericFilterBean {
 - 로그인 실패시 설정
 - 로그아웃 설정
 - ``UserDetailsSource`` 설정
-#### build.gradle 설정
+### build.gradle 설정
 - ``D:\Workspace\spring-security-practice\practice\03-2. Basic Login\sp-fastcampus-spring-sec\server\login-basic\build.gradle``
   - ``thymeleaf`` library 관련 라이브러리 설정 (Spring Security관련된 것도 포함)
   ```groovy
@@ -1223,7 +1223,7 @@ public class LogoutFilter extends GenericFilterBean {
     implementation("nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect")
   }
   ```
-#### 코드
+### 코드
 - Step 01. 코드의 초기 상태
   - 디자이너가 생성해준 thymeleaf를 포함하고 있는 template html이 존재
   - 모든 URL에 대해 Security Filter가 존재하지 않아서 권한 체크없이 접근 가능한 상태
@@ -1688,5 +1688,208 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
   ```  
   - Admin Role의 사용자에 대한 Details 정보 보기
   ![CustomAuthenticationDetailsSource](./images/CustomAuthenticationDetailsSource.png)
-#### 참고
+### 참고
 - https://www.thymeleaf.org/doc/articles/springsecurity.html
+## Authentication 동작원리
+### Authentication(인증)
+![fig-6-Authentication](./images/fig-6-Authentication.png)
+- ``Authentication``는 인증된 결과만 저장하는 것이 아니고, 인증을 하기 위한 정보와 인증을 받기 위한 정보가 하나의 객체에 동시에 들어 있음
+- 왜냐하면, ``AuthenticationProvider``(인증을 제공해줄 제공자)가 어떤 인증에 대해서 허가를 내줄 것인지 판단하기 위해서는 직접 입력된 인증을 보고 허가된 인증을 내주는 방식이기 때문
+- 그래서, ``AuthenticationProvider``는 처리 가능한 ``Authentication``에 대해 알려주는 ``support`` 메소드를 지원하고, ``authenticate()`` 에서 ``Authentication``을 입력값과 동시에 출력값으로도 사용
+  - ``Credentials`` : 인증을 받기 위해 필요한 입력 정보(Password etc) (input)
+  - ``Principal`` : 인증된 결과. 인증 대상 (output)
+  - ``Details`` : 기타 정보, 인증에 관여된 된 주변 정보들
+  - ``Authorities`` : 권한 정보들
+  ```java
+  package org.springframework.security.authentication;
+  /**
+  * Indicates a class can process a specific
+  * {@link org.springframework.security.core.Authentication} implementation.
+  *
+  * @author Ben Alex
+  */
+  public interface AuthenticationProvider {
+
+    /**
+    * Performs authentication with the same contract as
+    * {@link org.springframework.security.authentication.AuthenticationManager#authenticate(Authentication)}
+    * .
+    * @param authentication the authentication request object.
+    * @return a fully authenticated object including credentials. May return
+    * <code>null</code> if the <code>AuthenticationProvider</code> is unable to support
+    * authentication of the passed <code>Authentication</code> object. In such a case,
+    * the next <code>AuthenticationProvider</code> that supports the presented
+    * <code>Authentication</code> class will be tried.
+    * @throws AuthenticationException if authentication fails.
+    */
+    Authentication authenticate(Authentication authentication) throws AuthenticationException;
+
+    /**
+    * Returns <code>true</code> if this <Code>AuthenticationProvider</code> supports the
+    * indicated <Code>Authentication</code> object.
+    * <p>
+    * Returning <code>true</code> does not guarantee an
+    * <code>AuthenticationProvider</code> will be able to authenticate the presented
+    * instance of the <code>Authentication</code> class. It simply indicates it can
+    * support closer evaluation of it. An <code>AuthenticationProvider</code> can still
+    * return <code>null</code> from the {@link #authenticate(Authentication)} method to
+    * indicate another <code>AuthenticationProvider</code> should be tried.
+    * </p>
+    * <p>
+    * Selection of an <code>AuthenticationProvider</code> capable of performing
+    * authentication is conducted at runtime the <code>ProviderManager</code>.
+    * </p>
+    * @param authentication
+    * @return <code>true</code> if the implementation can more closely evaluate the
+    * <code>Authentication</code> class presented
+    */
+    boolean supports(Class<?> authentication);
+  }
+  ```  
+- ``Authentication``를 구현한 객체들은 일반적으로 ``Token``(버스 토큰과 같은 통행권)이라는 이름의 객체로 구현
+  - 따라서, ``Authentication``의 구현체를 인증 토큰이라고 불러도 좋음
+  - ``Authentication`` interface를 구현한 클래스
+    - ``UsernamePasswordAuthenticationToken``
+      - ``UsernamePasswordAuthenticationFilter``가 ``AuthenticationManager``를 구현한 ``ProviderManager``에 인증을 요청하면, ``ProviderManager``가 가지고 있는 여러 ``AuthenticationProvider`` 중 하나를 통해 Authentication 토큰을 발행
+    - ``RunAsUserToken``
+    - ``TestingAuthenticationToken``
+    - ``AnonymouseAuthenticationToken``
+    - ``RememberMeAuthenticationToken``: ``RememberMeAuthenticationFilter``가 발행을 요청
+    ```java
+    package org.springframework.security.web.authentication;
+    .....
+    public class UsernamePasswordAuthenticationFilter extends AbstractAuthenticationProcessingFilter {
+      ....
+      @Override
+      public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response)
+          throws AuthenticationException {
+        if (this.postOnly && !request.getMethod().equals("POST")) {
+          throw new AuthenticationServiceException("Authentication method not supported: " + request.getMethod());
+        }
+        String username = obtainUsername(request);
+        username = (username != null) ? username : "";
+        username = username.trim();
+        String password = obtainPassword(request);
+        password = (password != null) ? password : "";
+        UsernamePasswordAuthenticationToken authRequest = new UsernamePasswordAuthenticationToken(username, password);
+        // Allow subclasses to set the "details" property
+        setDetails(request, authRequest);
+        return this.getAuthenticationManager().authenticate(authRequest);
+      }
+    }   
+
+    package org.springframework.security.authentication;
+    ....
+    public class ProviderManager implements AuthenticationManager, MessageSourceAware, InitializingBean {
+      /**
+      * Construct a {@link ProviderManager} using the provided parameters
+      * @param providers the {@link AuthenticationProvider}s to use
+      * @param parent a parent {@link AuthenticationManager} to fall back to
+      */
+      public ProviderManager(List<AuthenticationProvider> providers, AuthenticationManager parent) {
+        Assert.notNull(providers, "providers list cannot be null");
+        this.providers = providers;
+        this.parent = parent;
+        checkState();
+      }      
+
+      /**
+      * Attempts to authenticate the passed {@link Authentication} object.
+      * <p>
+      * The list of {@link AuthenticationProvider}s will be successively tried until an
+      * <code>AuthenticationProvider</code> indicates it is capable of authenticating the
+      * type of <code>Authentication</code> object passed. Authentication will then be
+      * attempted with that <code>AuthenticationProvider</code>.
+      * <p>
+      * If more than one <code>AuthenticationProvider</code> supports the passed
+      * <code>Authentication</code> object, the first one able to successfully authenticate
+      * the <code>Authentication</code> object determines the <code>result</code>,
+      * overriding any possible <code>AuthenticationException</code> thrown by earlier
+      * supporting <code>AuthenticationProvider</code>s. On successful authentication, no
+      * subsequent <code>AuthenticationProvider</code>s will be tried. If authentication
+      * was not successful by any supporting <code>AuthenticationProvider</code> the last
+      * thrown <code>AuthenticationException</code> will be rethrown.
+      * @param authentication the authentication request object.
+      * @return a fully authenticated object including credentials.
+      * @throws AuthenticationException if authentication fails.
+      */
+      @Override
+      public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+        Class<? extends Authentication> toTest = authentication.getClass();
+        AuthenticationException lastException = null;
+        AuthenticationException parentException = null;
+        Authentication result = null;
+        Authentication parentResult = null;
+        int currentPosition = 0;
+        int size = this.providers.size();
+        for (AuthenticationProvider provider : getProviders()) {
+          if (!provider.supports(toTest)) {
+            continue;
+          }
+          if (logger.isTraceEnabled()) {
+            logger.trace(LogMessage.format("Authenticating request with %s (%d/%d)",
+                provider.getClass().getSimpleName(), ++currentPosition, size));
+          }
+          try {
+            result = provider.authenticate(authentication);
+            if (result != null) {
+              copyDetails(authentication, result);
+              break;
+            }
+          }
+          catch (AccountStatusException | InternalAuthenticationServiceException ex) {
+            prepareException(ex, authentication);
+            // SEC-546: Avoid polling additional providers if auth failure is due to
+            // invalid account status
+            throw ex;
+          }
+          catch (AuthenticationException ex) {
+            lastException = ex;
+          }
+        }
+        ......
+        if (result != null) {
+          ......
+          return result;
+        }
+        ....
+      }
+      ....
+    }
+    ```    
+- ``Authentication``를 구현한 객체는 ``SecurityContextHolder``를 통해 세션이 있건 없건 언제든 접근할 수 있도록 필터체인에서 보장해 줌
+### AuthenticationProvider(인증 제공자)
+![fig-7-AuthenticationProvider](./images/fig-7-AuthenticationProvider.png)
+- ``AuthenticationProvider``(인증 제공자)는 기본적으로 ``Authentication``을 인자로 받아서 인증을 하고, 인증된 결과를 다시 ``Authentication`` 객체로 리턴
+- 그런데, ``AuthenticationProvider``는 어떤 인증에 대해서 도장을 찍어줄지 ``AuthenticationManager`` 에게 알려줘야 하기 때문에 ``support()`` 라는 메소드를 제공
+- 인증 대상과 방식이 다양할 수 있기 때문에, ``AuthenticationProvider``(인증 제공자)도 여러개 올 수 있음
+
+03:23
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### 인증 관리자(AuthenticationManager)
+
+<img src="../images/fig-8-AuthenticationManager.png" width="600" style="max-width:600px;width:100%;" />
+
+- 인증 제공자들을 관리하는 인터페이스가 AuthenticationManager (인증 관리자)이고, 이 인증 관리자를 구현한 객체가 ProviderManager 입니다.
+- ProviderManager 도 복수개 존재할 수 있습니다.
+- 개발자가 직접 AuthenticationManager를 정의해서 제공하지 않는다면, AuthenticationManager 를 만드는 AuthenticationManagerFactoryBean 에서 DaoAuthenticationProvider 를 기본 인증제공자로 등록한 AuthenticationManage를 만든다.
+- DaoAuthenticationProvider 는 반드시 1개의 UserDetailsService 를 발견할 수 있어야 한다. 만약 없으면 InmemoryUserDetailsManager 에 [username=user, password=(서버가 생성한 패스워드)]인 사용자가 등록되어 제공됩니다.
+
+## 참고자료
+
+- JavaBrain 의 설명 : https://www.youtube.com/watch?v=caCJAJC41Rk&t=979s
+

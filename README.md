@@ -982,11 +982,6 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
     .....
 }
 ```
-## 실습하기
-- 필터 설정하고 확인하기
-- 필터를 ignore 하기
-- 서로 다른 필터 체인을 타도록 하기
-
 ## 로그인하기
 - Spring Framework에서 로그인을 한다는 것은 authenticated 가 true인 ``Authentication`` 객체를 ``SecurityContext``에 갖고 있는 상태를 말함
   - 단, Authentication이 AnonymousAuthenticationToken만 아니면 됨
@@ -1410,53 +1405,99 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
       ....
   }
   ```
-09:17  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#### 코드 조각
-
-- 로그인 사용자
-
-  ```java
-
-    auth
-      .inMemoryAuthentication()
-      .withUser(
-              User.withDefaultPasswordEncoder()
-              .username("user1")
-              .password("1111")
-              .roles("USER")
-      ).withUser(
-      User.withDefaultPasswordEncoder()
-              .username("admin")
-              .password("2222")
-              .roles("ADMIN")
-      );
-
+- Step 04. 로그인을 위한 사용자 정보를 메모리에 생성
+  - Test에 한정해서 ``User.withDefaultPasswordEncoder``를 사용 가능
+    - Production에서는 안전하지 않음 (Deprecated된 Method)
+```java
+package com.sp.fc.web.config;
+....
+@EnableWebSecurity(debug = true)
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    ......
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth
+                .inMemoryAuthentication()
+                .withUser(
+                        User.withDefaultPasswordEncoder()
+                                .username("user1")
+                                .password("1111")
+                                .roles("USER")
+                ).withUser(
+                        User.withDefaultPasswordEncoder()
+                                .username("admin")
+                                .password("2222")
+                                .roles("ADMIN")
+                );
+    }
+}
+```
+- Step 04-1. 설정 후, 로그인 페이지에서 로그인을 시도해도 다음 페이지로 이동하지 않음
+  - 문제의 원인은 csrf filter에 의해서 웹 페이지가 보낸 csrf token을 체크하기 때문
+    - ``CsrfFilter::doFilterInternal()`` Method에 해당 로직이 존재    
+  - 아래의 코드는 thymeleaf에서 csrf token을 활성화 시키는 방법
+    - ``action``을 ``th:action``으로 변경해주면 활성화 됨
+  ```html
+  <!-- templates/loginForm.html -->
+  ....
+  <div class="container center-contents">
+      <div class="row">
+          <form class="form-signin" method="post" th:action="@{/login}">
+  ....          
   ```
-
-- thymeleaf 에서 security를 적용하는 태그
-
+  - thymeleaf에서 만든 html을 살펴보면, 아래와 같이 hidden 형태로 csrf token값이 존재
+  ![thymeleaf_csrf_token](./images/thymeleaf_csrf_token.png)
+  - Debugging을 해보면 Csrf Filter를 통과한 후, UsernamePasswordAuthenticationFilter에서 usernamae과 password를 통해서 authentication token이 제대로 생성됨
+    - ``UsernamePasswordAuthenticationFilter::attemptAuthentication()`` Method    
+  - 원하는 페이지로 정상 이동됨
+- Step 06. Root Page(``/``)에 연결된 ``index.html`` 페이지에 로그아웃 버튼 생성
+```html
+<!-- template/index.html -->
+....
+        <div class="link">
+            <a href="/admin-page">  관리자 로그인 </a>
+        </div>
+        <div class="link">
+            <form th:action="@{/logout}" method="post">
+                <button class="btn btn-info" type="submit">로그 아웃</button>
+            </form>
+        </div>
+....        
+```              
+- Step 06. 로그인과 관련된 설정
+  - 설정 01: 로그인 성공 후, Default로 연결된 URL 설정
+    - Root Page(``/``)를 설정하고, ``alwaysUse``는 ``false``로 설정해서 사용자가 접근하는 페이지 정보가 없는 경우에만 Root Page로 이동하도록 처리
+  - 설정 02: 로그인 실패시 연결할 URL 설정
+    - ``failureUrl("/login-error")``
+  - 설정 03: 로그아웃 후의 URL을 Root Page(``/``)로 설정
+    - ``failureUrl("/login-error")``    
+```java
+package com.sp.fc.web.config;
+....
+@EnableWebSecurity(debug = true)
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+                .authorizeRequests(request -> {
+                    request
+                            .antMatchers("/").permitAll()
+                            .anyRequest().authenticated();
+                }).formLogin(
+                        t -> t.loginPage("/login")
+                                .permitAll()
+                                .defaultSuccessUrl("/", false)
+                                .failureUrl("/login-error")
+                )
+                .logout(t -> t.logoutSuccessUrl("/"));
+    }
+    ....
+}
+```  
+- Step 07. Root Page(``/``)에 연결된 ``index.html``에 thymleaf security tag를 적용하여 화면에 표시 유무 제어
+  - ``isAuthenticated()``: 로그인된 사용자한테만 보이게 함
+  - ``hasRole('ROLE_ADMIN')``: 관리자 권한이 있는 사용자한테만 보이게 함
+  - ``hasRole('ROLE_USER')``: 사용자 권한이 있는 사용자한테만 보이게 함
   ```html
   <div sec:authorize="isAuthenticated()">
     This content is only shown to authenticated users.
@@ -1468,9 +1509,184 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     This content is only shown to users.
   </div>
   ```
+  ```html
+  <!-- template/index.html -->
+  <div class="container center-contents">
+    <div class="row">
+        <h1 class="title display-5"> 메인 페이지 </h1>
+    </div>
+    <div class="links">
 
-## 참고
+        <div class="link" sec:authorize="!isAuthenticated()">
+            <a href="/login">  로그인 </a>
+        </div>
+        <div class="link" sec:authorize="isAuthenticated()">
+            <a href="/user-page">  유저 페이지  </a>
+        </div>
+        <div class="link" sec:authorize="isAuthenticated()">
+            <a href="/admin-page">  관리자 페이지 </a>
+        </div>
+        <div class="link" sec:authorize="isAuthenticated()">
+            <form th:action="@{/logout}" method="post">
+                <button class="btn btn-info" type="submit">로그 아웃</button>
+            </form>
+        </div>
+    </div>
+  </div>
+  ```
+  - Login 하기전의 Root Page
+  ![index_html_before_login](./images/index_html_before_login.png)
+  - Login 한 후의 Root Page
+  ![index_html_after_login](./images/index_html_after_login.png)
 
+- Step 08. User Role의 User가 Admin Role의 URL Page에 접근 못하도록 막기
+  - 설정 01: WebSecurityConfigurerAdapter를 상속한 클래스에 ``@EnableGlobalMethodSecurity(prePostEnabled = true)`` annotate를 추가해서 URL Method의 ``@PreAuthorize``와 ``@PostAuthorize``를 가능하도록 처리
+    - 설정 후, User Role의 계정으로 로그인한 후, ``/admin-page`` 접근 시 ``403`` 에러 발생
+  ```java
+  package com.sp.fc.web.config;
+
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    ....
+  }
+
+  package com.sp.fc.web.controller;
+  ....
+  @Controller
+  public class HomeController {
+      ....
+      @PreAuthorize("hasAnyAuthority('ROLE_USER')")
+      @GetMapping("/user-page")
+      public String userPage(){
+          return "UserPage";
+      }
+
+      @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
+      @GetMapping("/admin-page")
+      public String adminPage(){
+          return "AdminPage";
+      }
+  }
+  ```
+- Step 09. 권한 관련 에러 페이지를 설정하는 방법
+  - ``exceptionHandling()`` 메소드의 Lambda 함수의 `` e.accessDeniedPage``에 URL을 설정
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {      
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests(request -> {
+                      request
+                              .antMatchers("/").permitAll()
+                              .anyRequest().authenticated();
+                  }).formLogin(
+                          t -> t.loginPage("/login")
+                                  .permitAll()
+                                  .defaultSuccessUrl("/", false)
+                                  .failureUrl("/login-error")
+                  )
+                  .logout(t -> t.logoutSuccessUrl("/"))
+                  .exceptionHandling(e -> e.accessDeniedPage("/access-denied") );
+      }
+      ....
+  }
+  ```
+  - User Role의 사용자가 Admin Page에 접근 시, 아래와 같이 표시
+  ![access_denied_poage](./images/access_denied_poage.png)
+- Step 10. Admin Role의 사용자가 User Role URL에 접근 못하는 문제 해결
+  - ``RoleHierarachy`` Bean을 등록해 주면 됨
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      ....
+      @Bean
+      RoleHierarchy roleHierarchy() {
+          RoleHierarchyImpl roleHierarchy = new RoleHierarchyImpl();
+          roleHierarchy.setHierarchy("ROLE_ADMIN > ROLE_USER");
+          return roleHierarchy;
+      }
+  }
+  ```
+- Step 11. Custom한 ``AuthenticationDetailsSource`` 생성하기
+  - ``AuthenticationDetailsSource``를 구현한 객체는 ``Authentication``의 ``Detail`` 정보를 만들어 주는 역할
+  - 설정 1: ``AuthenticationDetailsSource``를 구현한 ``CustomAuthenticationDetailsSource`` 클래스 정의 및 메소드 구현
+  - 설정 2: ``FormLoginConfigurer``의 ``authenticationDetailsSource``로 ``CustomAuthenticationDetailsSource``를 설정
+  ```java
+  package com.sp.fc.web.controller;
+  ....
+  @Controller
+  public class HomeController {
+      ....
+      @ResponseBody
+      @GetMapping("/auth")
+      public Authentication auth() {
+          return SecurityContextHolder.getContext().getAuthentication();
+      }
+  }
+
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      private final CustomAuthenticationDetailsSource customAuthenticationDetailsSource;
+
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests(request -> {
+                      request
+                              .antMatchers("/").permitAll()
+                              .anyRequest().authenticated();
+                  }).formLogin(
+                          t -> t.loginPage("/login")
+                                  .permitAll()
+                                  .defaultSuccessUrl("/", false)
+                                  .failureUrl("/login-error")
+                                  .authenticationDetailsSource(customAuthenticationDetailsSource)
+                  )
+                  .logout(t -> t.logoutSuccessUrl("/"))
+                  .exceptionHandling(e -> e.accessDeniedPage("/access-denied") );
+      }
+      ....
+  }
+
+  package com.sp.fc.web.config;
+  ....
+  @Component
+  public class CustomAuthenticationDetailsSource implements AuthenticationDetailsSource<HttpServletRequest, RequestInfo> {
+      @Override
+      public RequestInfo buildDetails(HttpServletRequest request) {
+          return RequestInfo.builder()
+                  .remoteIp(request.getRemoteAddr())
+                  .sessionId(request.getSession().getId())
+                  .loginTime(LocalDateTime.now())
+                  .build();
+      }
+  }
+
+  package com.sp.fc.web.config;
+  ....
+  @Data
+  @AllArgsConstructor
+  @NoArgsConstructor
+  @Builder
+  public class RequestInfo {
+      private String remoteIp;
+      private String sessionId;
+      private LocalDateTime loginTime;
+  }  
+  ```  
+  - Admin Role의 사용자에 대한 Details 정보 보기
+  ![CustomAuthenticationDetailsSource](./images/CustomAuthenticationDetailsSource.png)
+#### 참고
 - https://www.thymeleaf.org/doc/articles/springsecurity.html
-
-03-1 basic-login 실습  

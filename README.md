@@ -304,7 +304,7 @@ help.enabled(false)
 - Run configuration 에서 On 'Update' action 과 On frame deactivation 의 값을 적절하게 수정해 줍니다.
 
 참고 사이트 : https://velog.io/@bread_dd/Spring-Boot-Devtools
-### 실습
+### 실습 (02. gradle 프로젝트 구성)
 - Step 01. ``gradle`` 명령어를 통한 초기 프로젝트 구성
 ```bash
 # 01. gradle init
@@ -556,7 +556,7 @@ dependencies {
 3. 어플리케이션 객체에 ``UserDetailsService Bean``을 만들어서 로그인을 한다.
 4. ``SecurityConfig``를 만들고 이를 통해 로그인 한다.
 5. ``SecurityMessage (UserDetails, message)`` 를 통해 /user 페이지와 /admin 페이지 접근 권한을 테스트 한다.
-## 실습한 내용
+## 실습한 내용 (03. 스프링 시큐리티란)
 - ``git checkout 1-gradle-setting``로 브랜치 변경
 - ``server/basic-test/build.gradle`` 파일을 수정
 ```groovy
@@ -1020,7 +1020,7 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 - ``Authentication``은 Interface로 아래와 같은 정보들을 갖고 있음
   - ``Set<GrantedAuthority> authorities``: 인증된 권한 정보
   - ``principal``: 인증 대상에 관한 정보. 주로 ``UserDetails`` 객체가 옴
-  - ``credentials``: 인증 확인을 위한 정보. 주로 ``Login Id or Password``가 오지만, ``Password``는 인증 후에는 보안을 위해 삭제함
+  - ``credentials``: 인증 확인을 위한 정보. 주로 ``Password``가 오지만, ``Password``는 인증 후에는 보안을 위해 삭제함
   - ``details``: 로그인 Request에 대한 상세 정보. ``IP, 세션정보, 기타 인증요청에서 사용했던 정보``들.
   - ``boolean authenticated``: 인증이 되었는지를 체크
 ## Form Login
@@ -1196,7 +1196,7 @@ public class LogoutFilter extends GenericFilterBean {
     - ``void onLogoutSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication)
     throws IOException, ServletException``
   - ``SimpleUrlLogoutSuccessHandler``
-## Basic-Login 실습
+## Basic-Login 실습 (03-2. Basic Login)
 - 기획자가 아래와 같은 사이트를 기획했다고 가정
 ![fig-5-user-login](./images/fig-5-user-login.png)
 - 디자이너는 이 사이트를 아래와 같이 디자인 했다고 가정
@@ -1864,32 +1864,469 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 - 그런데, ``AuthenticationProvider``는 어떤 인증에 대해서 도장을 찍어줄지 ``AuthenticationManager`` 에게 알려줘야 하기 때문에 ``support()`` 라는 메소드를 제공
 - 인증 대상과 방식이 다양할 수 있기 때문에, ``AuthenticationProvider``(인증 제공자)도 여러개 올 수 있음
 
-03:23
+### AuthenticationManager(인증 관리자)
+![fig-8-AuthenticationManager](./images/fig-8-AuthenticationManager.png)
+- ``AuthenticationManager``(인증 제공자)는 Interface 역할을 하고, 이것을 구현한 Class가 ``ProviderManager``
+- ``ProviderManager`` 도 복수개 존재할 수 있음
+- 개발자가 직접 ``AuthenticationManager``를 정의해서 제공하지 않는다면, ``AuthenticationManager``를 만드는 ``AuthenticationManagerFactoryBean``에서 ``DaoAuthenticationProvider``를 기본 인증제공자로 등록한 ``ProviderManager``를 생성
+- ``DaoAuthenticationProvider``는 반드시 1개의 ``UserDetailsService``를 발견할 수 있어야 함
+  - 만약, 없으면 ``InmemoryUserDetailsManager``에 ``[username=user, password=(서버가 생성한 패스워드)]``인 사용자가 등록되어 제공
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-### 인증 관리자(AuthenticationManager)
-
-<img src="../images/fig-8-AuthenticationManager.png" width="600" style="max-width:600px;width:100%;" />
-
-- 인증 제공자들을 관리하는 인터페이스가 AuthenticationManager (인증 관리자)이고, 이 인증 관리자를 구현한 객체가 ProviderManager 입니다.
-- ProviderManager 도 복수개 존재할 수 있습니다.
-- 개발자가 직접 AuthenticationManager를 정의해서 제공하지 않는다면, AuthenticationManager 를 만드는 AuthenticationManagerFactoryBean 에서 DaoAuthenticationProvider 를 기본 인증제공자로 등록한 AuthenticationManage를 만든다.
-- DaoAuthenticationProvider 는 반드시 1개의 UserDetailsService 를 발견할 수 있어야 한다. 만약 없으면 InmemoryUserDetailsManager 에 [username=user, password=(서버가 생성한 패스워드)]인 사용자가 등록되어 제공됩니다.
-
-## 참고자료
-
+### 참고자료
 - JavaBrain 의 설명 : https://www.youtube.com/watch?v=caCJAJC41Rk&t=979s
 
+### 실습 (04-1. login custom filter)
+- 초기 Root Page 화면: 학생과 선생님의 페이지가 별도로 존재
+![Login_Custom_Filter_Root_Page](./images/Login_Custom_Filter_Root_Page.png)
+- Step 01. Student와 Teacher를 위한 ``Principal``을 정의 (``id, username, roles`` 포함)
+```java
+package com.sp.fc.web.student;
+....
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+public class StudentPrincipal {
+    private String id;
+    private String username;
+    private Set<GrantedAuthority> roles;
+}
+```
+- Step 02. Student와 Teacher를 위한 ``Authentication`` 구현 클래스(Token)을 정의
+```java
+package com.sp.fc.web.student;
+....
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+@Builder
+public class StudentAuthenticationToken implements Authentication {
+    private StudentPrincipal principal;
+    private String credentials;
+    private String details;
+    private boolean authenticated;
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return principal != null ? principal.getRoles() : null;
+    }
+
+    @Override
+    public String getName() {
+        return principal != null ? principal.getUsername() : null;
+    }
+}
+```
+- Step 03. Student와 Teacher를 위한 ``Authentication Token``을 발급할 ``AuthenticationProvider`` Class를 정의
+  - ``UsernamePasswordAuthenticationToken.class``에 대한 인증을 처리하도록 지원
+    - ``supports()`` 메소드 이용
+  - 실제 DB의 사용자 정보를 가져와서 인증해줘야 하지만, 임의의 사용자 정보들을 이용
+    - ``StudentAuthenticationProvider`` Bean 주입 후, 사용자 정보들을 생성하도록 처리(``InitializingBean`` 이용)
+  - ``authenticate()`` method에서 인증이 성공한 경우, 필요한 정보들을 채운 후, ``authenticated``를 true로 변경
+    - 주의: 사용자 정보가 없는 경우, null로 리턴해야 함 (코드의 Comment 확인)
+      - 다른 Authentication Provider에게 인증할 기회 제공   
+  ```java
+  package com.sp.fc.web.student;
+  ....
+  @Component
+  public class StudentAuthenticationProvider implements AuthenticationProvider, InitializingBean {
+      // 실제 DB를 사용해서 사용자 정보를 가져와야 검증을 해줘야 하는 부분
+      // 테스트 용으로 HashMap에 데이터를 고정적으로 주입
+      private HashMap<String, StudentPrincipal> studentDB = new HashMap<>();
+
+      @Override
+      public void afterPropertiesSet() throws Exception {
+          Set.of(
+                  new StudentPrincipal("hong", "홍길동", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT"))),
+                  new StudentPrincipal("kang", "강아지", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT"))),
+                  new StudentPrincipal("ko", "고양이", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT")))
+          ).forEach(s -> studentDB.put(s.getId(), s));
+      }
+
+      @Override
+      public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+          if (authentication instanceof UsernamePasswordAuthenticationToken) {
+              UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) authentication;
+              if (studentDB.containsKey(token.getName()))
+              {
+                  StudentPrincipal principal = studentDB.get(token.getName());
+                  return StudentAuthenticationToken.builder()
+                          .principal(principal)
+                          .credentials(null)
+                          .details(principal.getUsername())
+                          .authenticated(true)
+                          .build();
+              }
+  // 중요: 아래와 같이 코드를 짜면, authentication을 처리했다고 정리되므로, 다른 Authentication Provider에 대해 시도하지 않음
+  // 처리할 수 없는 경우, null로 리턴
+  //            else {
+  //                authentication.setAuthenticated(false);
+  //                return authentication;
+  //            }
+          }
+          return null;
+      }
+
+      @Override
+      public boolean supports(Class<?> authentication) {
+          return authentication == UsernamePasswordAuthenticationToken.class;
+      }
+  }
+  ```
+- Step 04. 사용자 정의 ``AuthenticationProvider`` Class를 ``AuthenticationManager``에 등록
+  - ``WebSecurityConfigurerAdapter``를 상속한 Class의 ``configure()`` 메소드에서 ``AuthenticationManagerBuilder``에 해당 객체를 등록
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      private final StudentAuthenticationProvider provider;
+
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.authenticationProvider(provider);
+      }
+      ....    
+  }
+  ```
+- Step 05. ``UsernamePasswordAuthenticationFilter``를 활성화시키면,  ``UsernamePasswordAuthenticationToken``을 생성해서 인증을 시도함
+  - ``formLogin``을 사용하면, ``UsernamePasswordAuthenticationFilter``가 활성화
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      ....
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests(request->
+                          request.anyRequest().permitAll()
+                  )
+                  .formLogin(f -> f.loginPage("/login") )
+                  ;
+      }
+      ....
+  }
+  ```
+- Step 06. Root Page(``/``)를 제외한 페이지들은 인증을 사용하도록 변경
+  - ``request.antMatchers("/").permitAll().anyRequest().authenticated()`` 지정
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      ....
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests(request->
+                          request.antMatchers("/").permitAll()
+                                  .anyRequest().authenticated()
+                  )
+                  .formLogin(f -> f.loginPage("/login") )
+                  ;
+      }
+      ....
+  }
+  ```
+  - 적용한 후, ``학생페이지``에 접근할 때 아래와 같은 ``Redirection Count`` 에러 발생
+  ![Login_Redirection_Count](./images/Login_Redirection_Count.png)
+- Step 07. ``Redirection Count`` 에러
+  - Login Page(``/login``)가 인증을 필요로 하기 때문에 재귀 Redirection이 발생한 상황
+  - ``http.formLogin(f -> f.loginPage("/login").permitAll())`` 추가
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      ....
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests(request->
+                          request.antMatchers("/").permitAll()
+                                  .anyRequest().authenticated()
+                  )
+                  .formLogin(f -> f.loginPage("/login")
+                          .permitAll());
+      }
+  }
+  ```
+  - 적용한 후, Login 한 후, 페이지가 이동 안하는 문제 발생
+- Step 08. Login 후, Page가 이동 안 하는 문제 해결
+  - 문제의 원인은 csrf filter에 의해서 웹 페이지가 보낸 csrf token을 체크하기 때문
+    - ``CsrfFilter::doFilterInternal()`` Method에 해당 로직이 존재
+  ```bash
+  ....
+  Security filter chain: [
+    WebAsyncManagerIntegrationFilter
+    SecurityContextPersistenceFilter
+    HeaderWriterFilter
+    CsrfFilter
+    LogoutFilter
+    UsernamePasswordAuthenticationFilter
+    RequestCacheAwareFilter
+    SecurityContextHolderAwareRequestFilter
+    AnonymousAuthenticationFilter
+    SessionManagementFilter
+    ExceptionTranslationFilter
+    FilterSecurityInterceptor
+  ]
+  ....
+  ```      
+  - 해결책 1: ``thymeleaf``에서 ``csrf token``을 활성화 시키는 방법
+    - ``action``을 ``th:action``으로 변경해주면 활성화 됨
+  - 해결책 2: ``filter chain``에서 ``csrf filter``를 Disable 처리
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      ....
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .csrf().disable()
+                  .authorizeRequests(request->
+                          request.antMatchers("/").permitAll()
+                                  .anyRequest().authenticated()
+                  )
+                  .formLogin(f -> f.loginPage("/login")
+                          .permitAll());
+      }
+  }
+  ```
+- Step 09. Login 후, 인증 정보 페이지(``/auth``)에서 인증 정보 보기
+![Login_Authentication_Info](./images/Login_Authentication_Info.png)
+- Step 10. teacher에 대한 클래스도 동일하게 생성
+  - ``com.sp.fc.web.teacher.TeacherPrincipal``
+  - ``com.sp.fc.web.teacher.TeacherAuthenticationToken``
+  - ``com.sp.fc.web.teacher.TeacherAuthenticationProvider``
+  - ``WebSecurityConfigurerAdapter``를 상속한 Class의 ``configure()`` 메소드에서 ``AuthenticationManagerBuilder``에 ``TeacherAuthenticationProvider`` 객체를 등록
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      private final StudentAuthenticationProvider studentAuthenticationProvider;
+      private final TeacherAuthenticationProvider teacherAuthenticationProvider;
+
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.authenticationProvider(studentAuthenticationProvider);
+          auth.authenticationProvider(teacherAuthenticationProvider);
+      }      
+  }
+
+  ```
+- Step 11. teacher로 등록된 ``choi``로 로그인 시도
+  - ``StudentAuthenticationProvider::authenticate()``와 ``TeacherAuthenticationProvider::authenticate()`` 두 개의 메소드에서 인증을 시도
+    - 두 개의 ``AuthenticationProvider`` 모두 ``support()`` 메소드에서 ``UsernamePasswordAuthenticationToken.class``를 지원하기 때문
+    - ``TeacherAuthenticationProvider::authenticate()``에서만 사용자 정보를 찾아서 제대로된 ``Authentification`` Token을 생성
+    - 이것이 바로, ``StudentAuthenticationProvider::authenticate()``와 ``TeacherAuthenticationProvider::authenticate()``에서 사용자 정보가 없을 때 ``null``로 리턴하는 이유
+  - 문제 없이 동작하지만, teacher user가 student page에 접근이 가능함
+- Step 12. API 별로 권한 체크
+  - ``WebSecurityConfigurerAdapter``를 상속한 Class에서 ``@EnableGlobalMethodSecurity(prePostEnabled = true)`` 추가
+  ```java
+  package com.sp.fc.web.config;
+  ....
+
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    ....
+  }
+
+  package com.sp.fc.web.controller;
+  ....
+
+  @Controller
+  @RequestMapping("/student")
+  public class StudentController {
+      @PreAuthorize("hasAnyAuthority('ROLE_STUDENT')")
+      @GetMapping("/main")
+      public String main(){
+          return "StudentMain";
+      }
+  }
+
+  package com.sp.fc.web.controller;
+  ....
+  @Controller
+  @RequestMapping("/teacher")
+  public class TeacherController {
+      @PreAuthorize("hasAnyAuthority('ROLE_TEACHER')")
+      @GetMapping("/main")
+      public String main(){
+          return "TeacherMain";
+      }
+  }
+  ```
+  - teacher user가 Student Page에 접근하면 ``403`` 에러 발생
+- Step 13. ``403`` 에러에 대해서 특정 페이지로 가도록 설정
+  - ``http.exceptionHandling()``를 통해 에러 페이지를 지정
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      ....
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .csrf().disable()
+                  .authorizeRequests(request->
+                          request.antMatchers("/").permitAll()
+                                  .anyRequest().authenticated()
+                  )
+                  .formLogin(f -> f.loginPage("/login")
+                          .permitAll())
+                  .exceptionHandling(e -> e.accessDeniedPage("/access-denied"));
+      }
+      ....
+  }
+  ```
+- Step 14. 기타 설정
+  - Login 성공하는 경우의 default url 설정
+    - ``defaultSuccessUrl()``: 두 번째 인자는 false로 설정하는 것이 중요
+  - Login 실패할 경우의 url 설정
+    - ``failureUrl()``    
+  - Logout의 default url 설정
+    - ``logout(o -> o.logoutSuccessUrl("/"))``  
+  ```java
+  package com.sp.fc.web.config;
+  ....
+
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      .....
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .csrf().disable()
+                  .authorizeRequests(request->
+                          request.antMatchers("/").permitAll()
+                                  .anyRequest().authenticated()
+                  )
+                  .formLogin(f -> f.loginPage("/login")
+                          .permitAll()
+                          .defaultSuccessUrl("/", false)
+                          .failureUrl("/login-error"))
+                  .logout(o -> o.logoutSuccessUrl("/"))
+                  .exceptionHandling(e -> e.accessDeniedPage("/access-denied"));
+      }
+
+      @Override
+      public void configure(WebSecurity web) throws Exception {
+          web.ignoring()
+                  .requestMatchers(PathRequest.toStaticResources().atCommonLocations())
+                  ;
+      }
+  }
+  ```
+  - Root Page에 대응하는 ``template html(index.html)``의 ``thymeleaf`` 권한 설정      
+  ```html
+  <!DOCTYPE html>
+  <html lang="ko" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+  ....
+  <body>
+  <div class="container center-contents">
+      <div class="row">
+          <h1 class="title display-5"> 학생 / 선생님 메인 페이지 </h1>
+      </div>
+
+      <div class="links">
+
+          <div class="link" sec:authorize="!isAuthenticated()">
+              <a href="/login">  로그인 </a>
+          </div>
+          <div class="link" sec:authorize="isAuthenticated()">
+              <a href="/student/main">  학생 페이지  </a>
+          </div>
+          <div class="link" sec:authorize="isAuthenticated()">
+              <a href="/teacher/main">  선생님 페이지 </a>
+          </div>
+          <div class="link" sec:authorize="isAuthenticated()">
+              <form th:action="@{/logout}" method="post">
+                  <button type="submit">  로그아웃 </button>
+              </form>
+          </div>
+      </div>
+  </div>
+  <script th:src="@{/js/bootstrap.js}" />
+  </body>
+  </html>
+  ```
+- Step 14. ``UsernamePasswordAuthenticationFilter``를 사용자 Custom Filter로 교체하는 것도 가능 (필요할 때만 하자)
+  - ``UsernamePasswordAuthenticationFilter``를 상속한 ``CustomLoginFilter`` 생성
+    - 인증과 관련된 ``attemptAuthentication()`` Method를 재정의
+      - Detail과 관련된 내용 삭제
+  - ``WebSecurityConfigurerAdapter``를 상속한 클래스 수정
+    - ``UsernamePasswordAuthenticationFilter``를 사용하지 않기 위해 ``formLogin()``를 주석처리
+    - ``configure(HttpSecurity http)`` Method에서 ``CustomLoginFilter`` 생성
+    - Filter Chain의 ``UsernamePasswordAuthenticationFilter`` 위치에 ``CustomLoginFilter``를 삽입    
+      - ``.addFilterAt(filter, UsernamePasswordAuthenticationFilter.class)``
+    - Login page에 대한 권한을 풀어줌
+      - ``.authorizeRequests(request->request.antMatchers("/", "/login").permitAll()
+                                .anyRequest().authenticated())``  
+```java
+  package com.sp.fc.web.config;
+  ....
+  public class CustomLoginFilter extends UsernamePasswordAuthenticationFilter {
+      public CustomLoginFilter(AuthenticationManager authenticationManager) {
+          super(authenticationManager);
+      }
+
+      @Override
+      public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws AuthenticationException {
+          String username = obtainUsername(request);
+          username = (username != null) ? username : "";
+          username = username.trim();
+          String password = obtainPassword(request);
+          password = (password != null) ? password : "";
+          UsernamePasswordAuthenticationToken authRequest = new UsernamePasswordAuthenticationToken(username, password);
+          return this.getAuthenticationManager().authenticate(authRequest);
+      }
+  }
+
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  @RequiredArgsConstructor
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      .....
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          CustomLoginFilter filter = new CustomLoginFilter(authenticationManager());
+          http
+                  .csrf().disable()
+                  .authorizeRequests(request->
+                          request.antMatchers("/", "/login").permitAll()
+                                  .anyRequest().authenticated()
+                  )
+  //                .formLogin(f -> f.loginPage("/login")
+  //                        .permitAll()
+  //                        .defaultSuccessUrl("/", false)
+  //                        .failureUrl("/login-error"))
+                  .addFilterAt(filter, UsernamePasswordAuthenticationFilter.class)
+                  .logout(o -> o.logoutSuccessUrl("/"))
+                  .exceptionHandling(e -> e.accessDeniedPage("/access-denied"));
+      }
+      ....
+  }
+```  
+04-1. login-custom filter 00:00      

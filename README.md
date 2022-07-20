@@ -1864,17 +1864,6 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 - 그런데, ``AuthenticationProvider``는 어떤 인증에 대해서 도장을 찍어줄지 ``AuthenticationManager`` 에게 알려줘야 하기 때문에 ``support()`` 라는 메소드를 제공
 - 인증 대상과 방식이 다양할 수 있기 때문에, ``AuthenticationProvider``(인증 제공자)도 여러개 올 수 있음
 
-### AuthenticationManager(인증 관리자)
-![fig-8-AuthenticationManager](./images/fig-8-AuthenticationManager.png)
-- ``AuthenticationManager``(인증 제공자)는 Interface 역할을 하고, 이것을 구현한 Class가 ``ProviderManager``
-- ``ProviderManager`` 도 복수개 존재할 수 있음
-- 개발자가 직접 ``AuthenticationManager``를 정의해서 제공하지 않는다면, ``AuthenticationManager``를 만드는 ``AuthenticationManagerFactoryBean``에서 ``DaoAuthenticationProvider``를 기본 인증제공자로 등록한 ``ProviderManager``를 생성
-- ``DaoAuthenticationProvider``는 반드시 1개의 ``UserDetailsService``를 발견할 수 있어야 함
-  - 만약, 없으면 ``InmemoryUserDetailsManager``에 ``[username=user, password=(서버가 생성한 패스워드)]``인 사용자가 등록되어 제공
-
-### 참고자료
-- JavaBrain 의 설명 : https://www.youtube.com/watch?v=caCJAJC41Rk&t=979s
-
 ### 실습 (04-1. login custom filter)
 - 초기 Root Page 화면: 학생과 선생님의 페이지가 별도로 존재
 ![Login_Custom_Filter_Root_Page](./images/Login_Custom_Filter_Root_Page.png)
@@ -2276,9 +2265,10 @@ public class StudentAuthenticationToken implements Authentication {
       - Detail과 관련된 내용 삭제
   - ``WebSecurityConfigurerAdapter``를 상속한 클래스 수정
     - ``UsernamePasswordAuthenticationFilter``를 사용하지 않기 위해 ``formLogin()``를 주석처리
-    - ``configure(HttpSecurity http)`` Method에서 ``CustomLoginFilter`` 생성
-    - Filter Chain의 ``UsernamePasswordAuthenticationFilter`` 위치에 ``CustomLoginFilter``를 삽입    
+    - ``configure(HttpSecurity http)`` Method에서 ``CustomLoginFilter`` 생성한 후,
+    - Filter Chain의 ``UsernamePasswordAuthenticationFilter`` 위치에 ``CustomLoginFilter``를 삽입
       - ``.addFilterAt(filter, UsernamePasswordAuthenticationFilter.class)``
+      - ``CustomLoginFilter``를 삽입하면 해당 Filter는 자동으로 활성화되고, ``/login`` Page가 Post Method로 호출되면 인증을 시도(``attemptAuthentication()``)
     - Login page에 대한 권한을 풀어줌
       - ``.authorizeRequests(request->request.antMatchers("/", "/login").permitAll()
                                 .anyRequest().authenticated())``  
@@ -2329,4 +2319,145 @@ public class StudentAuthenticationToken implements Authentication {
       ....
   }
 ```  
-04-1. login-custom filter 00:00      
+- Step 15. 학생과 선생에 대해 각각 별도의 ``Authentification Token``을 사용하도록 설정
+  - 설정 1: 학생과 선생에 대한 정보를 ``radio`` button을 이용하여 ``type``으로 전달
+  ```html
+  <!--loginForm.html -->
+            <div class="checkbox mb-3">
+                <label>
+                    <input type="checkbox" name="remember-me"> Remember me
+                </label>
+            </div>
+            <div class="type-select">
+                <input type="radio" name="type" value="student"> 학생
+                <input type="radio" name="type" value="teacher"> 선생님
+            </div>
+            <button class="btn btn-lg btn-primary btn-block"  type="submit"> 로그인 </button>
+            <div class="error-message" th:if="${loginError}">
+                <span> 아이디나 패스워드가 올바르지 않습니다. </span>
+            </div>
+  ```
+  - 설정 2: ``CustomLoginFilter`` Filter에서 학생과 선생에 대해 별도의 Token을 생성하도록 처리
+    - 테스트를 위해 임의로 ``credentials``에 ``username``을 담아둠 (원래는 비밀번호가 담겨야 함)    
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  public class CustomLoginFilter extends UsernamePasswordAuthenticationFilter {
+      public CustomLoginFilter(AuthenticationManager authenticationManager) {
+          super(authenticationManager);
+      }
+
+      @Override
+      public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws AuthenticationException {
+          String username = obtainUsername(request);
+          username = (username != null) ? username : "";
+          username = username.trim();
+          String password = obtainPassword(request);
+          password = (password != null) ? password : "";
+
+          Authentication authRequest = null;
+          // student or teacher
+          String type = request.getParameter("type");
+          if (type == null || !type.equals("teacher")) {
+              // student
+              authRequest = StudentAuthenticationToken.builder()
+                      .credentials(username)
+                      .build();
+          } else {
+              // teacher
+              authRequest = TeacherAuthenticationToken.builder()
+                      .credentials(username)
+                      .build();
+          }
+          return this.getAuthenticationManager().authenticate(authRequest);
+      }
+  }
+  ```
+  - 설정 3: ``StudentAuthenticationProvider``와 ``TeacherAuthenticationProvider``가 ``StudentAuthenticationToken``와 ``TeacherAuthenticationToken``을 가지고 인증하도록 관련 로직을 수정
+  ```java
+  package com.sp.fc.web.student;
+  ....
+  @Component
+  public class StudentAuthenticationProvider implements AuthenticationProvider, InitializingBean {
+      ....
+      @Override
+      public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+          if (authentication instanceof StudentAuthenticationToken) {
+              StudentAuthenticationToken token = (StudentAuthenticationToken) authentication;
+              if (studentDB.containsKey(token.getCredentials()))
+              {
+                  StudentPrincipal principal = studentDB.get(token.getCredentials());
+                  return StudentAuthenticationToken.builder()
+                          .principal(principal)
+                          .credentials(null)
+                          .details(principal.getUsername())
+                          .authenticated(true)
+                          .build();
+              }
+          }
+          return null;
+      }
+
+      @Override
+      public boolean supports(Class<?> authentication) {
+          return authentication == StudentAuthenticationToken.class;
+      }
+  }
+
+  package com.sp.fc.web.teacher;
+  ....
+  @Component
+  public class TeacherAuthenticationProvider implements AuthenticationProvider, InitializingBean {
+      ....
+      @Override
+      public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+          if (authentication instanceof TeacherAuthenticationToken) {
+              TeacherAuthenticationToken token = (TeacherAuthenticationToken) authentication;
+              if (teacherDB.containsKey(token.getCredentials()))
+              {
+                  TeacherPrincipal principal = teacherDB.get(token.getCredentials());
+                  return TeacherAuthenticationToken.builder()
+                          .principal(principal)
+                          .credentials(null)
+                          .details(principal.getUsername())
+                          .authenticated(true)
+                          .build();
+              }
+          }
+          return null;
+      }
+
+      @Override
+      public boolean supports(Class<?> authentication) {
+          return authentication == TeacherAuthenticationToken.class;
+      }
+  } 
+  ```
+  - ``CustomLoginFilter``의 문제점
+    - ``UsernamePasswordAuthenticationFilter``를 완벽히 대체 못함
+      - ``formLogin()``에서 제공하는 ``.defaultSuccessUrl()``과 ``.failureUrl()``등을 지원 못함
+      - 해당 기능을 ``CustomLoginFilter``에 직접 구현할 필요가 있음
+    - ``CustomLoginFilter``와 ``UsernamePasswordAuthenticationFilter``를 동시에 사용해도 됨
+      - 동시에 사용하면, 인증은 ``CustomLoginFilter``를 사용하고, ``.defaultSuccessUrl()``과 ``.failureUrl()``등은  ``UsernamePasswordAuthenticationFilter``를 사용하게 됨(꼼수)  
+### AuthenticationManager(인증 관리자)
+![fig-8-AuthenticationManager](./images/fig-8-AuthenticationManager.png)
+- ``AuthenticationManager``(인증 제공자)는 Interface 역할을 하고, 이것을 구현한 Class가 ``ProviderManager``
+- ``ProviderManager`` 도 복수개 존재할 수 있음
+#### 실제 개발에서 주로 사용하는 인증 방법 (중요)
+- 개발자가 ``Authentication Token``을 지원하는 ``AuthenticationProvider``를 정의해서 제공하지 않는다면, ``AuthenticationManager``를 만드는 ``AuthenticationManagerFactoryBean``에서 ``DaoAuthenticationProvider``를 기본 인증제공자로 등록한 ``ProviderManager``를 생성
+- ``DaoAuthenticationProvider``는 반드시 1개의 ``UserDetailsService``를 발견할 수 있어야 함
+  - 만약, 없으면 ``InmemoryUserDetailsManager``에 ``[username=user, password=(서버가 생성한 패스워드)]``인 사용자가 등록되어 제공
+- 실제 개발에서는 ``Authentication Token``과 ``AuthenticationProvider``를 직접 구현할 일은 잘 없음
+  - ``UserDetailsService``를 구현한 서비스 생성해서 Bean으로 등록해 주면, ``DaoAuthenticationProvider``에 의해서 인증이 처리됨
+    - ``loadUserByUsername()`` Method에서 사용자 정보를 이용해서 ``UserDetails``에 생성해서 리턴해 주면 됨
+  ```java
+  package org.springframework.security.core.userdetails;
+
+  public interface UserDetailsService {
+    UserDetails loadUserByUsername(String username) throws UsernameNotFoundException;
+  }
+  ```
+### 참고자료
+- JavaBrain 의 설명 : https://www.youtube.com/watch?v=caCJAJC41Rk&t=979s
+
+05. Basic 토큰 인증

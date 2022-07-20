@@ -28,11 +28,11 @@ public class StudentAuthenticationProvider implements AuthenticationProvider, In
 
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
-        if (authentication instanceof UsernamePasswordAuthenticationToken) {
-            UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) authentication;
-            if (studentDB.containsKey(token.getName()))
+        if (authentication instanceof StudentAuthenticationToken) {
+            StudentAuthenticationToken token = (StudentAuthenticationToken) authentication;
+            if (studentDB.containsKey(token.getCredentials()))
             {
-                StudentPrincipal principal = studentDB.get(token.getName());
+                StudentPrincipal principal = studentDB.get(token.getCredentials());
                 return StudentAuthenticationToken.builder()
                         .principal(principal)
                         .credentials(null)
@@ -52,6 +52,6 @@ public class StudentAuthenticationProvider implements AuthenticationProvider, In
 
     @Override
     public boolean supports(Class<?> authentication) {
-        return authentication == UsernamePasswordAuthenticationToken.class;
+        return authentication == StudentAuthenticationToken.class;
     }
 }

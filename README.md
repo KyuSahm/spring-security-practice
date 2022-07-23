@@ -2459,5 +2459,41 @@ public class StudentAuthenticationToken implements Authentication {
   ```
 ### 참고자료
 - JavaBrain 의 설명 : https://www.youtube.com/watch?v=caCJAJC41Rk&t=979s
+## Basic 토큰 인증
+### BasicAuthenticationFilter
+- **기본적으로 로그인 페이지를 사용할 수 없는 상황에서 사용**
+  - SPA 페이지 (``react, angular, vue ...``)
+    - 서버에서 로그인 폼이 제공되는 것이 아니라, 클라이언트(웹브라우저, 앱)에서 JavaScript로 로그인 폼을 만들어서 사용하는 방식
+  - 브라우저 기반의 모바일 앱(브라우저 개반의 앱, ex: ``inoic``)
+  - ``Basic Token`` 또는 ``JWT Token(Bearer Token)`` 방식을 사용
+    - 세션을 사용하는 경우에는 ``Basic Token``를 주로 사용
+    - 세션을 사용하지 않는 경우에는 ``JWT Token(Bearer Token)``를 주로 사용
+- 설정 방법
+  ```java
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
-05. Basic 토큰 인증
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http
+                .httpBasic();
+    }
+  }
+  ```  
+- ``SecurityContext``에 인증된 토큰이 없다면 아래와 같은 포멧의 토큰을 받아서 인증처리를 함
+  - Header에 ``Basic `` + ``username:password``(Base64Encoding)된 값이 전달
+![fig-10-basic-authentication-filter-hello](./images/fig-10-basic-authentication-filter-hello.png)
+- http 에서는 header에 ``username:password`` 값이 묻어서 가기 때문에 보안에 매우 취약
+  - 그래서, 반드시 https 프로토콜에서 사용할 것을 권장하고 있음
+- **최초 ``Login``시에만 인증을 처리하고, 이후에는 ``session``에 의존**
+- 또한 ``RememberMe``를 설정한 경우, ``remember-me`` 쿠키가 브라우저에 저장되기 때문에 세션이 만료된 이후라도 브라우저 기반의 앱에서는 장시간 서비스를 로그인 페이지를 거치지 않고 이용할 수 있음
+- 에러가 나면 ``401 (UnAuthorized)`` 에러를 내려보냄
+- 로그인 페이지 처리는 주로 아래와 같은 방식으로 함
+![fig-10-basic-filter-user](./images/fig-10-basic-filter-user.png)
+### SecurityContextPersistenceFilter
+- ``SecurityContext``를 저장하고 있는 저장소에서 만료되지 않은 인증이 있으면 ``SecurityContextHolder``에 넣어줌
+  - 이전에는 ``HttpSessionContextIntegrationFilter``이란 필터가 있었지만, 저장소가 반드시 세션일 필요는 없기 때문에 추상화된 ``SecurityContextPersistenceFilter`` 클래스로 발전된 필터
+- ``HttpSessionSecurityContextRepository``
+  - 서버 세션에 ``SecurityContext``를 저장하는 기본 저장소
+## Bearer 토큰
+- JWT 토큰
+- Opaque 토큰

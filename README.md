@@ -559,131 +559,131 @@ dependencies {
 ## 실습한 내용 (03. 스프링 시큐리티란)
 - ``git checkout 1-gradle-setting``로 브랜치 변경
 - ``server/basic-test/build.gradle`` 파일을 수정
-```groovy
-dependencies {
-    implementation("$boot:spring-boot-starter-web")
-}
-```
+  ```groovy
+  dependencies {
+      implementation("$boot:spring-boot-starter-web")
+  }
+  ```
 - ``@SpringBootApplication``을 위한 클래스 등록
-```java
-package com.sp.fc.web;
-....
-@SpringBootApplication
-public class BasicTestApplication {
-    public static void main(String[] args) {
-        SpringApplication.run(BasicTestApplication.class, args);
-    }
-}
-```
+  ```java
+  package com.sp.fc.web;
+  ....
+  @SpringBootApplication
+  public class BasicTestApplication {
+      public static void main(String[] args) {
+          SpringApplication.run(BasicTestApplication.class, args);
+      }
+  }
+  ```
 - ``server/basic-test/src/main/resources/application.yml``파일 생성 및 서버 포트 설정
-```yaml
-server:
-  port: 9050
-```
-- Controller Class 작성
-```java
-package com.sp.fc.web.controller;
-....
-@RestController
-public class HomeController {
-    @RequestMapping("/")
-    public String index() {
-        return "홈페이지";
-    }
-}
-```
+  ```yaml
+  server:
+    port: 9050
+  ```
+  - Controller Class 작성
+  ```java
+  package com.sp.fc.web.controller;
+  ....
+  @RestController
+  public class HomeController {
+      @RequestMapping("/")
+      public String index() {
+          return "홈페이지";
+      }
+  }
+  ```
 - 서버 부팅 후, Browser를 통해 ``http://localhost:9050``에 접속하면 로그인 팝업 창이 뜸: 기본적으로 Spring Security가 동작하고 있기 때문
-![localhost_on_spring_security](./images/localhost_on_spring_security.png)
-- 기본적인 사용자 명인 ``user``와 서버의 로그에 찍히는 패스워드를 이용해서 로그인 하면 됨
-```bash
-2022-06-27 22:52:41.497  INFO 11076 --- [  restartedMain] .s.s.UserDetailsServiceAutoConfiguration : 
-Using generated security password: c3283119-f124-4938-846a-055a2c35cba5
-2022-06-27 22:52:41.613  INFO 11076 --- [  restartedMain] o.s.s.web.Def
-```
+  ![localhost_on_spring_security](./images/localhost_on_spring_security.png)
+- 기본적인 사용자 명인 ``user``와 ``서버의 로그에 찍히는 패스워드``를 이용해서 로그인 하면 됨
+  ```bash
+  2022-06-27 22:52:41.497  INFO 11076 --- [  restartedMain] .s.s.UserDetailsServiceAutoConfiguration : 
+  Using generated security password: c3283119-f124-4938-846a-055a2c35cba5
+  2022-06-27 22:52:41.613  INFO 11076 --- [  restartedMain] o.s.s.web.Def
+  ```
 - 로그인하면, 원하는 내용이 웹브라우저에 표시됨
 ![localhost_after_login](./images/localhost_after_login.png)
 - 매번 암호를 확인해서 입력하기 힘들므로, ``server/basic-test/src/main/resources/application.yml``에 암호를 설정해서 사용할 수 있음
-```yaml
-server:
-  port: 9050
-spring:
-  security:
-    user:
-      name: user1
-      password: 1111
-      roles: USER
-```
+  ```yaml
+  server:
+    port: 9050
+  spring:
+    security:
+      user:
+        name: user1
+        password: 1111
+        roles: USER
+  ```
 - 현재 사용하고 있는 Authentication 정보를 브라우저에 찍어보는 방법
   - ``SecurityContextHolder``의 Context에서 Authentication 정보를 찍어봄
   - 브라우저에서 ``localhost:9050/auth``에 접속
-```java
-package com.sp.fc.web.controller;
-....
-@RestController
-public class HomeController {
-    ....
-    @RequestMapping("/auth")
-    public Authentication auth() {
-        return SecurityContextHolder
-                .getContext()
-                .getAuthentication();
-    }
-}
-```
-![Authentification_Info](./images/Authentification_Info.png)
+  ```java
+  package com.sp.fc.web.controller;
+  ....
+  @RestController
+  public class HomeController {
+      ....
+      @RequestMapping("/auth")
+      public Authentication auth() {
+          return SecurityContextHolder
+                  .getContext()
+                  .getAuthentication();
+      }
+  }
+  ```
+  ![Authentification_Info](./images/Authentification_Info.png)
 - Controller Method에 대한 접근 권한 설정 방법
   - 참조: https://copycoding.tistory.com/278
   - 방법1: ``WebSecurityConfigureAdapter``를 상속한 ``WebSecurityConfig``를 작성
   - 방법2: Controller에 annotation을 추가하여 관리하는 방법
     - ``@PreAuthorize, @PostAuthorize, @Secured``를 사용('hasRole)
-```java
-package com.sp.fc.web.controller;
-....
-@RestController
-public class HomeController {
-    ....
-    @PreAuthorize("hasAnyAuthority('ROLE_USER')")
-    @RequestMapping("/user")
-    public SecurityMessage user() {
-        return SecurityMessage.builder()
-                .auth(SecurityContextHolder.getContext().getAuthentication())
-                .message("사용자 정보")
-                .build();
-    }
+  ```java
+  package com.sp.fc.web.controller;
+  ....
+  @RestController
+  public class HomeController {
+      ....
+      @PreAuthorize("hasAnyAuthority('ROLE_USER')")
+      @RequestMapping("/user")
+      public SecurityMessage user() {
+          return SecurityMessage.builder()
+                  .auth(SecurityContextHolder.getContext().getAuthentication())
+                  .message("사용자 정보")
+                  .build();
+      }
 
-    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
-    @RequestMapping("/admin")
-    public SecurityMessage admin() {
-        return SecurityMessage.builder()
-                .auth(SecurityContextHolder.getContext().getAuthentication())
-                .message("관리자 정보")
-                .build();
-    }
-}
+      @PreAuthorize("hasAnyAuthority('ROLE_ADMIN')")
+      @RequestMapping("/admin")
+      public SecurityMessage admin() {
+          return SecurityMessage.builder()
+                  .auth(SecurityContextHolder.getContext().getAuthentication())
+                  .message("관리자 정보")
+                  .build();
+      }
+  }
 
-package com.sp.fc.web.dto;
-....
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-@Builder
-public class SecurityMessage {
-    private Authentication auth;
-    private String message;
-}
-```
+  package com.sp.fc.web.dto;
+  ....
+  @Data
+  @AllArgsConstructor
+  @NoArgsConstructor
+  @Builder
+  public class SecurityMessage {
+      private Authentication auth;
+      private String message;
+  }
+  ```
 - 하지만, ``USER`` 권한을 갖는 ``user1``이 ``localhost:9050/user``과 ``localhost:9050/admin``에 모두 접근 가능한 문제가 발생
   - **정보 탈취의 가능성이 있음**
   - 해결 방법: ``WebSecurityConfigurerAdapter``를 상속한 WebSecurityConfig를 선언
     - ``@EnableWebSecurity``와 ``@EnableGlobalMethodSecurity(prePostEnabled = true)`` annotate해서 Method의 ``@PreAuthorize``와 ``@PostAuthorize``를 가능하도록 설정하면 됨
-```java
-package com.sp.fc.web.config;
-....
-@EnableWebSecurity(debug = true)
-@EnableGlobalMethodSecurity(prePostEnabled = true)
-public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
-}
-```
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+  }
+  ```
 - ``user1``으로 접속한 후, ``localhost:9050/admin``에 접속하면 ``403`` 에러가 발생
 ![admin_page_403_error](./images/admin_page_403_error.png)
 - ``applcation.yml``에서는 하나의 User만 설정해서 사용가능
@@ -691,102 +691,102 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
   - ``inMemoryAuthentification``을 사용하면 더 이상 ``application.yml``에 등록한 사용자는 사용 못하게 됨
     - ``Bad credentials`` 에러가 발생
   - **아래와 같이 명시하면, Password Encoder를 사용하지 않아서 서버에서 에러가 발생함**
-```java
-package com.sp.fc.web.config;
-.....
-@EnableWebSecurity(debug = true)
-@EnableGlobalMethodSecurity(prePostEnabled = true)
-public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
-    @Override
-    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
-        auth.inMemoryAuthentication()
-                .withUser(User.builder()
-                        .username("user2")
-                        .password("2222")
-                        .roles("USER"))
-                .withUser(User.builder()
-                        .username("admin")
-                        .password("3333")
-                        .roles("ADMIN"));
-    }
-}
-```
-```bash
-2022-06-28 23:18:52.450 ERROR 23948 --- [nio-9050-exec-8] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception
+  ```java
+  package com.sp.fc.web.config;
+  .....
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.inMemoryAuthentication()
+                  .withUser(User.builder()
+                          .username("user2")
+                          .password("2222")
+                          .roles("USER"))
+                  .withUser(User.builder()
+                          .username("admin")
+                          .password("3333")
+                          .roles("ADMIN"));
+      }
+  }
+  ```
+  ```bash
+  2022-06-28 23:18:52.450 ERROR 23948 --- [nio-9050-exec-8] o.a.c.c.C.[.[.[/].[dispatcherServlet]    : Servlet.service() for servlet [dispatcherServlet] in context with path [] threw exception
 
-java.lang.IllegalArgumentException: There is no PasswordEncoder mapped for the id "null"
-	at org.springframework.security.crypto.password.DelegatingPasswordEncoder$UnmappedIdPasswordEncoder.matches(DelegatingPasswordEncoder.java:254) ~[spring-security-core-5.4.2.jar:5.4.2]
-	at org.springframework.security.crypto.password.DelegatingPasswordEncoder.matches(DelegatingPasswordEncoder.java:202) ~[spring-security-core-5.4.2.jar:5.4.2]
-	at org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter$LazyPasswordEncoder.matches(WebSecurityConfigurerAdapter.java:595) ~[spring-security-config-5.4.2.jar:5.4.2]
-	at org.springframework.security.authentication.dao.DaoAuthenticationProvider.additionalAuthenticationChecks(DaoAuthenticationProvider.java:76) ~[spring-security-core-5.4.2.jar:5.4.2]
-```
+  java.lang.IllegalArgumentException: There is no PasswordEncoder mapped for the id "null"
+    at org.springframework.security.crypto.password.DelegatingPasswordEncoder$UnmappedIdPasswordEncoder.matches(DelegatingPasswordEncoder.java:254) ~[spring-security-core-5.4.2.jar:5.4.2]
+    at org.springframework.security.crypto.password.DelegatingPasswordEncoder.matches(DelegatingPasswordEncoder.java:202) ~[spring-security-core-5.4.2.jar:5.4.2]
+    at org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter$LazyPasswordEncoder.matches(WebSecurityConfigurerAdapter.java:595) ~[spring-security-config-5.4.2.jar:5.4.2]
+    at org.springframework.security.authentication.dao.DaoAuthenticationProvider.additionalAuthenticationChecks(DaoAuthenticationProvider.java:76) ~[spring-security-core-5.4.2.jar:5.4.2]
+  ```
 - 아래의 코드처럼, Password Encoder를 사용해서 비밀번호를 암호화 처리
   - admin으로 ``localhost:9050/admin, localhost:9050, localhost:9050/auth``에 접속되지만,
   - ``localhost:9050/user``에는 접속 안됨
-```java
-package com.sp.fc.web.config;
-....
-@EnableWebSecurity(debug = true)
-@EnableGlobalMethodSecurity(prePostEnabled = true)
-public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
-    @Override
-    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
-        auth.inMemoryAuthentication()
-                .withUser(User.builder()
-                        .username("user2")
-                        .password(passwordEncoder().encode("2222"))
-                        .roles("USER"))
-                .withUser(User.builder()
-                        .username("admin")
-                        .password(passwordEncoder().encode("3333"))
-                        .roles("ADMIN"));
-    }
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.inMemoryAuthentication()
+                  .withUser(User.builder()
+                          .username("user2")
+                          .password(passwordEncoder().encode("2222"))
+                          .roles("USER"))
+                  .withUser(User.builder()
+                          .username("admin")
+                          .password(passwordEncoder().encode("3333"))
+                          .roles("ADMIN"));
+      }
 
-    @Bean
-    PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
-}
-```
+      @Bean
+      PasswordEncoder passwordEncoder() {
+          return new BCryptPasswordEncoder();
+      }
+  }
+  ```
 - 주소에 ``http://localhost:9050/logout``을 입력해서 로그아웃 할 수 있음
 - Spring Security는 기본적으로 모든 페이지(/, /auth, /user, /admin)를 로그인이 없이는 사용 못하도록 막음
   - 왜냐면, ``WebSecurityConfigurerAdapter``의 ``configure()`` 메소드가 모든 페이지를 인증을 한 후, 사용하도록 설정
     - ``http.authorizeRequests((requests) -> requests.anyRequest().authenticated());``
-```java
-public abstract class WebSecurityConfigurerAdapter implements WebSecurityConfigurer<WebSecurity> {
-....    
-    protected void configure(HttpSecurity http) throws Exception {
-		this.logger.debug("Using default configure(HttpSecurity). "
-				+ "If subclassed this will potentially override subclass configure(HttpSecurity).");
-		http.authorizeRequests((requests) -> requests.anyRequest().authenticated());
-		http.formLogin();
-		http.httpBasic();
-	}
-....
-}    
-```    
+  ```java
+  public abstract class WebSecurityConfigurerAdapter implements WebSecurityConfigurer<WebSecurity> {
+  ....    
+      protected void configure(HttpSecurity http) throws Exception {
+      this.logger.debug("Using default configure(HttpSecurity). "
+          + "If subclassed this will potentially override subclass configure(HttpSecurity).");
+      http.authorizeRequests((requests) -> requests.anyRequest().authenticated());
+      http.formLogin();
+      http.httpBasic();
+    }
+  ....
+  }    
+  ```
 - 만약, 특정 페이지(``/``)는 로그인 없이 사용하기를 원한다면?
   - ``protected void configure(HttpSecurity http) throws Exception`` 함수를 재정의 하면 됨
   - ``antMatchers``를 이용해서, ``/``은 로그인 없이 사용하도록 ``permitAll()``을 호출 
   - ``antMatchers``로 맵핑되지 않은 페이지들은 ``anyRequest().authenticated()``를 이용해서 로그인을 요청
-```java
-package com.sp.fc.web.config;
-....
-@EnableWebSecurity(debug = true)
-@EnableGlobalMethodSecurity(prePostEnabled = true)
-public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
-    .....
-    @Override
-    protected void configure(HttpSecurity http) throws Exception {
-        http.authorizeRequests((requests) ->
-                requests.antMatchers("/").permitAll()
-                        .anyRequest().authenticated());
-        http.formLogin();
-        http.httpBasic();
-    }
-    ....
-}
-``` 
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+      .....
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http.authorizeRequests((requests) ->
+                  requests.antMatchers("/").permitAll()
+                          .anyRequest().authenticated());
+          http.formLogin();
+          http.httpBasic();
+      }
+      ....
+  }
+  ``` 
 - 서버 재시작 후, ``http://localhost:9050/``은 로그인 없이 접근 가능 
 - 다른 페이지로 접근하면, 로그인을 요청 받음
 - 전체 소스
@@ -2491,9 +2491,271 @@ public class StudentAuthenticationToken implements Authentication {
 ![fig-10-basic-filter-user](./images/fig-10-basic-filter-user.png)
 ### SecurityContextPersistenceFilter
 - ``SecurityContext``를 저장하고 있는 저장소에서 만료되지 않은 인증이 있으면 ``SecurityContextHolder``에 넣어줌
-  - 이전에는 ``HttpSessionContextIntegrationFilter``이란 필터가 있었지만, 저장소가 반드시 세션일 필요는 없기 때문에 추상화된 ``SecurityContextPersistenceFilter`` 클래스로 발전된 필터
+  - 이전에는 ``HttpSessionContextIntegrationFilter``이란 필터가 있었지만, 저장소가 반드시 세션일 필요는 없기 때문에, 추상화된 ``SecurityContextPersistenceFilter`` 클래스로 발전된 필터를 사용
 - ``HttpSessionSecurityContextRepository``
   - 서버 세션에 ``SecurityContext``를 저장하는 기본 저장소
+### Basic 토큰 인증 실습 (05-1. Basic Authentication 테스트)
+- Step 01. ``server-basic-authentication-test`` 프로젝트에 클래스 생성
+  - ``SecurityConfig``
+    - 모든 Request에 대해서 인증을 요청하도록 하고, ``Basic Authentication`` filter를 활성화
+  - ``HomeController``
+  ```java
+  package com.sp.fc.web.controller;
+  ....
+  @RestController
+  public class HomeController {
+      @GetMapping("/greeting")
+      public String greeting() {
+          return "hello";
+      }
+  }
+
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .authorizeRequests().anyRequest().authenticated()
+                  .and()
+                  .httpBasic();;
+      }
+  }
+
+  ```
+- Step 02. ``server-basic-authentication-test`` 프로젝트에 ``@SpringBootTest`` 클래스 생성
+  - Random Port를 사용해서 Spring Boot 시작
+  - 해당 포트 정보를 ``@LoacalServerPort`` Annotation을 이용해서 변수로 읽어들임
+  ```java
+  package com.sp.fc.web;
+  ....
+  @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+  public class BasicAuthenticationTest {
+      @LocalServerPort
+      private int port;
+      private RestTemplate client = new RestTemplate();
+
+      private String greetingUrl() {
+          return "http://localhost:" + port + "/greeting";
+      }
+
+       @Test
+      void test(){
+        ...
+      }
+  }
+  ```
+- Step 03. 인증 실패 테스트 코드 작성
+  - 서버의 모든 URI가 인증을 필요로 하므로, ``401`` 에러가 발생
+  - ``assertThrows()``를 통해 실행 후, 예외 클래스 타입을 체크 
+  ```java
+  package com.sp.fc.web;
+  ....
+  @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+  public class BasicAuthenticationTest {
+      ....
+      @DisplayName("1. 인증 실패")
+      @Test
+      void test_1(){
+          HttpClientErrorException exception = assertThrows(HttpClientErrorException.class, () -> {
+              client.getForObject(greetingUrl(), String.class);
+          });
+          assertEquals(401, exception.getRawStatusCode());
+      }
+  }
+  ```
+- Step 04. 인증 성공 테스트 코드 작성
+  - ``InMemoryAuthentication``을 활성화 하고, 사용자 정보를 등록
+  - ``Basic Authentication``을 현재 사용중이기 때문에, ``Header``의 ``Authorization`` Key에 ``username:password`` 정보를 ``Base64 encoding``해서 서버로 보냄
+  - 인증 관련 서버 내부 로직
+    - 순서 1. ``BasicAuthenticationFilter``에서 request의 ``authorization header``값을 이용해서 ``UsernamePasswordAuthenticationToken`` 생성
+    - 순서 2. ``SecurityContextHolder``에서 해당 사용자에 대한 인증이 존재하는지 체크(``authenticationIsRequired()`` 메소드)
+      - 존재하지 않는다면, 계속 진행
+      - 존재한다면 인증을 다시 할 필요가 없으므로, 리턴
+    - 순서 3. ``ProviderManager``의 ``authenticate()`` 메소드 호출
+    - 순서 4. ``DaoAuthenticationProvider``의 ``loadUserByUsername()`` 호출
+    - 순서 5. ``loadUserByUsername()``를 구현한 ``InMemoryUserDetailsManager``에서 ``UserDetails``를 생성해서 리턴  
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.inMemoryAuthentication()
+                  .withUser(User.withDefaultPasswordEncoder()
+                          .username("user1")
+                          .password("1111")
+                          .roles("USER")
+                          .build());
+      }
+      ....
+  }
+
+  package com.sp.fc.web;
+  .....
+  @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+  public class BasicAuthenticationTest {
+      .....
+      @DisplayName("2. 인증 성공")
+      @Test
+      void test_2(){
+          HttpHeaders headers = new HttpHeaders();
+          headers.add(HttpHeaders.AUTHORIZATION, "Basic " + Base64.getEncoder().encodeToString(
+                  "user1:1111".getBytes()
+          ));
+          HttpEntity entity = new HttpEntity(null, headers);
+          ResponseEntity<String> response =
+                  client.exchange(greetingUrl(), HttpMethod.GET, entity, String.class);
+          assertEquals("hello", response.getBody());
+      }
+  }
+  ```
+  ![BasicAuthentication_Stack](./images/BasicAuthentication_Stack.png)
+- Step 05. ``TestRestTemplate``를 이용한 인증 성공 테스트 코드 작성
+  - Header를 지정할 수 있으므로, ``RestTemplate``에 비해 편함
+  ```java
+  package com.sp.fc.web;
+  ....
+  @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+  public class BasicAuthenticationTest {
+      ....
+      @DisplayName("3. 인증 성공 2")
+      @Test
+      void test_3(){
+          TestRestTemplate testClient = new TestRestTemplate("user1", "1111");
+          ResponseEntity<String> response =
+                  testClient.getForEntity(greetingUrl(), String.class);
+          assertEquals("hello", response.getBody());
+      }
+  }
+  ```
+- Step 06. POST 방식의 인증 테스트 코드 작성  
+  - 아래처럼, POST 방식의 인증 테스트 코드를 작성하면 됨
+  - 하지만, ``Response Body``의 값이 Null임
+    - CSRF Filter가 동작해서 문제가 발생한 것임
+  ```java
+  package com.sp.fc.web.controller;
+  .....
+  @RestController
+  public class HomeController {
+      .....
+      @PostMapping("/greeting")
+      public String greeting(@RequestBody String name) {
+          return "hello " + name;
+      }
+  }
+
+  package com.sp.fc.web;
+  ....
+  @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+  public class BasicAuthenticationTest {
+      .....
+      @DisplayName("4. POST 인증")
+      @Test
+      void test_4(){
+          TestRestTemplate testClient = new TestRestTemplate("user1", "1111");
+          ResponseEntity<String> response =
+                  testClient.postForEntity(greetingUrl(), "kyusham", String.class);
+          assertEquals("hello kyusham", response.getBody());
+      }
+
+  }
+  ```
+  ```bash
+  ************************************************************
+  Request received for POST '/error':
+
+  org.apache.catalina.core.ApplicationHttpRequest@4490a3df
+
+  servletPath:/error
+  pathInfo:null
+  headers: 
+  authorization: Basic dXNlcjE6MTExMQ==
+  accept: text/plain, application/json, application/*+json, */*
+  content-type: text/plain;charset=ISO-8859-1
+  user-agent: Java/11.0.11
+  host: localhost:51079
+  connection: keep-alive
+  content-length: 7
+
+
+  Security filter chain: [
+    WebAsyncManagerIntegrationFilter
+    SecurityContextPersistenceFilter
+    HeaderWriterFilter
+    CsrfFilter
+    LogoutFilter
+    BasicAuthenticationFilter
+    RequestCacheAwareFilter
+    SecurityContextHolderAwareRequestFilter
+    AnonymousAuthenticationFilter
+    SessionManagementFilter
+    ExceptionTranslationFilter
+    FilterSecurityInterceptor
+  ]
+  ************************************************************
+  org.opentest4j.AssertionFailedError: 
+  Expected :hello kyusham
+  Actual   :null
+  <Click to see difference>
+    at org.junit.jupiter.api.AssertionUtils.fail(AssertionUtils.java:55)
+    at org.junit.jupiter.api.AssertionUtils.failNotEqual(AssertionUtils.java:62)
+    at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:182)
+    at org.junit.jupiter.api.AssertEquals.assertEquals(AssertEquals.java:177)
+    at org.junit.jupiter.api.Assertions.assertEquals(Assertions.java:1124)
+    at com.sp.fc.web.BasicAuthenticationTest.test_4(BasicAuthenticationTest.java:67)
+    ....    
+  ``` 
+- Step 06-1. CSRF Filter Disable 후, 테스트가 정상 동작
+  - 문제 제기: ``SPA(Mobile)``은 ``CSRF Filter``를 ``Disable``하는 것이 맞고, ``Web``은 ``CSRF Filter``를 ``Enable``하는 것이 맞음
+    - 상이한 로그인 정책이 서버에 공존해야 되는 문제가 발생함
+    - 어떻게 해결할 지에 대해서 다음 시간에 논의
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @EnableWebSecurity(debug = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      ......
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .csrf().disable()
+                  .authorizeRequests().anyRequest().authenticated()
+                  .and()
+                  .httpBasic();
+          ;
+      }
+  }
+  ```
+
+05-1 basic 인증 기본 테스트
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+
 ## Bearer 토큰
-- JWT 토큰
-- Opaque 토큰
+- ``JWT Token``
+- ``Opaque Token``

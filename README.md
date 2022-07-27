@@ -2575,6 +2575,7 @@ public class StudentAuthenticationToken implements Authentication {
       - 존재한다면 인증을 다시 할 필요가 없으므로, 리턴
     - 순서 3. ``ProviderManager``의 ``authenticate()`` 메소드 호출
     - 순서 4. ``DaoAuthenticationProvider``의 ``loadUserByUsername()`` 호출
+      - 따로 사용자가 등록한 ``AuthenticationProvider``가 없기 때문
     - 순서 5. ``loadUserByUsername()``를 구현한 ``InMemoryUserDetailsManager``에서 ``UserDetails``를 생성해서 리턴  
   ```java
   package com.sp.fc.web.config;
@@ -2729,8 +2730,367 @@ public class StudentAuthenticationToken implements Authentication {
       }
   }
   ```
+### Basic 인증 기본 테스트
+- CSRF Filter에 관한 정책에 대한 이슈 해결
+  - ``SPA(Mobile)``은 ``CSRF Filter``를 ``Disable``
+  - ``Web``은 ``CSRF Filter``를 ``Enable``
+#### 실습 코드 (05-2. Multi-chain-proxy)
+- Step 01. 선생님은 학생 리스트를 가지고 있고, 학생은 선생님에 대한 참조를 가지고 있음
+  - ``Teacher``와 ``Student`` 클래스를 수정
+  - ``TeacherAuthenticationProvider``의 ``afterPropertiesSet()``를 수정   
+  - ``StudentAuthenticationProvider``의 ``afterPropertiesSet()``를 수정하고, ``getMyStudentList()``를 구현
+  - ``Web``는 ``CustomLoginFilter`` 사용
+    - ``TeacherAuthenticationToken``과 ``StudentAuthenticationToken``로 접근
+    -``UsernamePasswordAuthenticationToken``로 접근하도록 코딩 가능
+  - ``Mobile``는 ``BasicAuthenticationFilter`` 사용
+    -``UsernamePasswordAuthenticationToken``로 접근
+  ```java
+  package com.sp.fc.web.teacher;
+  ....
+  public class Teacher {
 
-05-1 basic 인증 기본 테스트
+      private String id;
+      private String username;
+      private Set<GrantedAuthority> role;
+
+      private List<Student> studentList;
+  }
+
+  package com.sp.fc.web.student;
+  ....
+  public class Student {
+
+      private String id;
+      private String username;
+      private Set<GrantedAuthority> role;
+
+      private String teacherId;
+  }
+
+  package com.sp.fc.web.teacher;
+  ....
+  @Component
+  public class TeacherAuthenticationProvider implements AuthenticationProvider, InitializingBean {
+      private HashMap<String, Teacher> teacherDB = new HashMap<>();
+
+      @Override
+      public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+          if (authentication instanceof TeacherAuthenticationToken) {
+              // Web Acess
+              TeacherAuthenticationToken token = (TeacherAuthenticationToken) authentication;
+              if (teacherDB.containsKey(token.getCredentials())) {
+                  Teacher teacher = teacherDB.get(token.getCredentials());
+                  return TeacherAuthenticationToken.builder()
+                          .principal(teacher)
+                          .details(teacher.getUsername())
+                          .authenticated(true)
+                          .build();
+              }
+          } else if (authentication instanceof UsernamePasswordAuthenticationToken) {
+              // Mobile Access
+              UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) authentication;
+              if (teacherDB.containsKey(token.getName())) {
+                  Teacher teacher = teacherDB.get(token.getName());
+                  return TeacherAuthenticationToken.builder()
+                          .principal(teacher)
+                          .details(teacher.getUsername())
+                          .authenticated(true)
+                          .authorities(teacher.getRole())
+                          .build();
+              }
+          }
+          return null;
+      }
+
+      @Override
+      public boolean supports(Class<?> authentication) {
+          return authentication == TeacherAuthenticationToken.class ||
+                 authentication == UsernamePasswordAuthenticationToken.class;
+      }
+
+      @Override
+      public void afterPropertiesSet() throws Exception {
+          Set.of(
+                  new Teacher("choi", "최선생", Set.of(new SimpleGrantedAuthority("ROLE_TEACHER")), null)
+          ).forEach(s ->
+                  teacherDB.put(s.getId(), s)
+          );
+      }
+  }
+
+
+  package com.sp.fc.web.student;
+  ....
+
+  @Component
+  public class StudentAuthenticationProvider implements AuthenticationProvider, InitializingBean {
+      private HashMap<String, Student> studentDB = new HashMap<>();
+
+      @Override
+      public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+          if (authentication instanceof StudentAuthenticationToken) {
+              // Web Access
+              StudentAuthenticationToken token = (StudentAuthenticationToken) authentication;
+              if (studentDB.containsKey(token.getCredentials())) {
+                  Student student = studentDB.get(token.getCredentials());
+                  return StudentAuthenticationToken.builder()
+                          .principal(student)
+                          .details(student.getUsername())
+                          .authenticated(true)
+                          .authorities(student.getRole())
+                          .build();
+              }
+          } else if (authentication instanceof UsernamePasswordAuthenticationToken) {
+              // Mobile Access
+              UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) authentication;
+              if (studentDB.containsKey(token.getName())) {
+                  Student student = studentDB.get(token.getName());
+                  return StudentAuthenticationToken.builder()
+                          .principal(student)
+                          .details(student.getUsername())
+                          .authenticated(true)
+                          .authorities(student.getRole())
+                          .build();
+              }
+          }
+          return null;
+      }
+
+      @Override
+      public boolean supports(Class<?> authentication) {
+          return authentication == StudentAuthenticationToken.class ||
+                authentication == UsernamePasswordAuthenticationToken.class;
+      }
+
+      public List<Student> getMyStudentList(String teacherId) {
+          return studentDB.values().stream()
+                  .filter(s -> s.getTeacherId().equals(teacherId))
+                  .collect(Collectors.toList());
+      }
+
+      @Override
+      public void afterPropertiesSet() throws Exception {
+          Set.of(
+                  new Student("hong", "홍길동", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT")), "choi"),
+                  new Student("kang", "강아지", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT")), "choi"),
+                  new Student("rang", "호랑이", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT")), "choi")
+          ).forEach(s->
+              studentDB.put(s.getId(), s)
+          );
+      }
+  }
+  ```
+- Step 02. Teacher관련 View와 Controller에 학생리스트를 보이도록 수정
+  - ``TeacherController``클래스에 ``StudentAuthenticationProvider``를 주입받아서 학생리스트를 View에 넘겨줌
+  - ``TeacherMain`` template에 학생리스트를 보여주는 thymeleaf를 추가
+  ```java
+  package com.sp.fc.web.controller;
+  ....
+  @Controller
+  @RequiredArgsConstructor
+  @RequestMapping("/teacher")
+  public class TeacherController {
+      private final StudentAuthenticationProvider studentAuthenticationProvider;
+
+      @PreAuthorize("hasAnyAuthority('ROLE_TEACHER')")
+      @GetMapping("/main")
+      public String main(@AuthenticationPrincipal Teacher teacher, Model model)
+      {
+          model.addAttribute("studentList", studentAuthenticationProvider.getMyStudentList(teacher.getId()));
+          return "TeacherMain";
+      }
+  }
+
+  <!DOCTYPE html>
+  <html lang="ko" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+  ....
+  <body>
+
+  <div class="container center-contents">
+      <div class="row">
+          <h1 class="title display-5 text-info"> Teacher  페이지 </h1>
+      </div>
+      <div class="links">
+          ....
+          <ul>
+              <li th:each="student:${studentList}" th:object="${student}" th:text="*{username}">
+                  학생
+              </li>
+          </ul>
+      </div>
+  </div>
+  <script th:src="@{/js/bootstrap.js}" />
+  </body>
+  </html>
+  ```
+  ![student_list](./images/student_list.png)
+- Step 03. 현재의 필터상태 확인
+  - ``CsrfFilter`` Enable이 되어 있어서 ``Web``에서만 정상동작하고, ``SPA(Mobile)``에서는 문제가 발생
+  - ``SPA(Mobile)``에서도 동작하게 하려면, 새로운 Filter Chain을 추가 구성해야 함
+    - ``WebSecurityConfigurerAdapter``을 상속받은 새로운 Web Configuration이 필요
+  ```bash
+  ************************************************************
+  Request received for GET '/teacher/main':
+
+  org.apache.catalina.connector.RequestFacade@70f70093
+
+  servletPath:/teacher/main
+  pathInfo:null
+  headers: 
+  host: localhost:9054
+  user-agent: Mozilla/5.0 (X11; Linux x86_64; rv:103.0) Gecko/20100101 Firefox/103.0
+  accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8
+  accept-language: en-US,en;q=0.5
+  accept-encoding: gzip, deflate, br
+  connection: keep-alive
+  referer: http://localhost:9054/
+  cookie: JSESSIONID=F75C38458E4D6DB83126F77C1149F8EF
+  upgrade-insecure-requests: 1
+  sec-fetch-dest: document
+  sec-fetch-mode: navigate
+  sec-fetch-site: same-origin
+  sec-fetch-user: ?1
+
+
+  Security filter chain: [
+    WebAsyncManagerIntegrationFilter
+    SecurityContextPersistenceFilter
+    HeaderWriterFilter
+    CsrfFilter
+    LogoutFilter
+    CustomLoginFilter
+    UsernamePasswordAuthenticationFilter
+    RequestCacheAwareFilter
+    SecurityContextHolderAwareRequestFilter
+    AnonymousAuthenticationFilter
+    SessionManagementFilter
+    ExceptionTranslationFilter
+    FilterSecurityInterceptor
+  ]
+  ************************************************************
+  ```
+- Step 04. ``SPA(Mobile)``를 위한 새로운 Filter Chain을 추가 구성
+  - ``@EnableWebSecurity``과 ``@EnableGlobalMethodSecurity``은 중복 선언 불가
+    - 이미 ``SecurityConfig``에 선언이 되어 있으므로 ``@Configuration``으로 대체
+  - Mobile에서는 ``/api/**`` 형태의 URI를 사용
+    - ``http.antMatcher("/api/**")``
+    - Web과 Mobile을 URI로 구분 가능
+  - Basic Authencation Filter를 Enable
+    - ``http.httpBasic()``
+  - ``SPA(Mobile)``에서는 웹리소스에 대한 설정 함수인 ``configure(WebSecurity web)``가 필요 없음
+  - ``csrf`` filter disable
+    - ``http.csrf().disable()``
+  - 모든 페이지에 대해서 권한 인증을 요청
+    - Root Page에 대한 permitAll()이 필요 없음
+  - ``formLogin``이 필요 없음
+  - ``logout`` 관련 설정도 필요 없음
+  - ``exceptionHandling``도 필요 없음   
+  ```java
+  package com.sp.fc.web.config;
+  .....
+  @Configuration
+  public class MobileSecurityConfig extends WebSecurityConfigurerAdapter {
+      private final StudentAuthenticationProvider studentAuthenticationProvider;
+      private final TeacherAuthenticationProvider teacherAuthenticationProvider;
+
+      public MobileSecurityConfig(StudentAuthenticationProvider studentAuthenticationProvider, TeacherAuthenticationProvider teacherAuthenticationProvider) {
+          this.studentAuthenticationProvider = studentAuthenticationProvider;
+          this.teacherAuthenticationProvider = teacherAuthenticationProvider;
+      }
+
+
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.authenticationProvider(studentAuthenticationProvider);
+          auth.authenticationProvider(teacherAuthenticationProvider);
+      }
+
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .antMatcher("/api/**")
+                  .csrf().disable()
+                  .authorizeRequests(request->
+                          request.anyRequest().authenticated()
+                  )
+                  .httpBasic();
+      }
+  }
+  ```
+- Step 05. ``Web``와 ``SPA(Mobile)` Filter Chain의 우선 순위 설정  
+  - ``@Order`` annotation을 사용하여 ``SPA(Mobile)``를 ``Web`` 보다 우선 순위에 둠
+    - ``SPA(Mobile)``의 ``http.antMatcher("/api/**")``로 먼저 필터링
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @Order(1)
+  @Configuration
+  public class MobileSecurityConfig extends WebSecurityConfigurerAdapter {
+  .....
+  }
+
+  package com.sp.fc.web.config;
+
+  @Order(2)
+  @EnableWebSecurity(debug = true)
+  @EnableGlobalMethodSecurity(prePostEnabled = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+  ....
+  }
+  ```
+  - 서버를 시작해보면 두 개의 ``Security Filter Chain``이 구성됨을 확인할 수 있음
+    - BasicAuthenticationFilter: ``SPA(Mobile)``용
+    - CustomLoginFilter: ``Web``용
+  ```bash
+  2022-07-27 11:57:50.429  INFO 23900 --- [  restartedMain] o.s.s.web.DefaultSecurityFilterChain     : Will secure Ant [pattern='/api/**'] with [org.springframework.security.web.context.request.async.WebAsyncManagerIntegrationFilter@3d90777, org.springframework.security.web.context.SecurityContextPersistenceFilter@2a725c6f, org.springframework.security.web.header.HeaderWriterFilter@1b53f0f7, org.springframework.security.web.authentication.logout.LogoutFilter@2b28c607, org.springframework.security.web.authentication.www.BasicAuthenticationFilter@5435eacd, org.springframework.security.web.savedrequest.RequestCacheAwareFilter@2c5487c1, org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter@53b118a1, org.springframework.security.web.authentication.AnonymousAuthenticationFilter@78b4d3ea, org.springframework.security.web.session.SessionManagementFilter@7f913e93, org.springframework.security.web.access.ExceptionTranslationFilter@356efdd3, org.springframework.security.web.access.intercept.FilterSecurityInterceptor@603d9650]
+  2022-07-27 11:57:50.434  INFO 23900 --- [  restartedMain] o.s.s.web.DefaultSecurityFilterChain     : Will secure any request with [org.springframework.security.web.context.request.async.WebAsyncManagerIntegrationFilter@3c758034, org.springframework.security.web.context.SecurityContextPersistenceFilter@4edc7e8c, org.springframework.security.web.header.HeaderWriterFilter@12a95dc5, org.springframework.security.web.csrf.CsrfFilter@4d775a74, org.springframework.security.web.authentication.logout.LogoutFilter@aeb8c3, com.sp.fc.web.config.CustomLoginFilter@4c641a8d, org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter@4d47a4cb, org.springframework.security.web.savedrequest.RequestCacheAwareFilter@3542bbdb, org.springframework.security.web.servletapi.SecurityContextHolderAwareRequestFilter@6d5d8fc3, org.springframework.security.web.authentication.AnonymousAuthenticationFilter@434dd420, org.springframework.security.web.session.SessionManagementFilter@398f2733, org.springframework.security.web.access.ExceptionTranslationFilter@1bec1135, org.springframework.security.web.access.intercept.FilterSecurityInterceptor@6b4827b3]
+  ```
+- Step 06. ``SPA(Mobile)``를 위한 RestController API 정의  
+  ```java
+  package com.sp.fc.web.controller;
+  ....
+  @RestController
+  @RequiredArgsConstructor
+  @RequestMapping("/api/teacher")
+  public class ApiTeacherController {
+      private final StudentAuthenticationProvider studentAuthenticationProvider;
+
+      @PreAuthorize("hasAnyAuthority('ROLE_TEACHER')")
+      @GetMapping("/students")
+      public List<Student> studentList(@AuthenticationPrincipal Teacher teacher)
+      {
+          return studentAuthenticationProvider.getMyStudentList(teacher.getId());
+      }
+  }
+  ```
+  ![student_api_list](./images/student_api_list.png)
+- Step 07. ``SPA(Mobile)`` Test를 위한 TestCase 작성
+  ```java
+  package com.sp.fc.web;
+  ....
+  @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+  public class MultiChainProxyTest {
+      @LocalServerPort
+      int port;
+      RestTemplate restTemplate = new RestTemplate();
+
+      @DisplayName("1. 학생조사")
+      @Test
+      void test_1() throws JsonProcessingException {
+          String url = format("http://localhost:%d/api/teacher/students", port);
+
+          HttpHeaders headers = new HttpHeaders();
+          headers.add(HttpHeaders.AUTHORIZATION,
+                  "Basic " + Base64.getEncoder().encodeToString("choi:1".getBytes()));
+          HttpEntity entity = new HttpEntity(null, headers);
+          ResponseEntity<List<Student>> response = restTemplate.exchange(url, HttpMethod.GET, entity,
+                  new ParameterizedTypeReference<List<Student>>(){});
+          List<Student> studentList = response.getBody();
+          assertEquals(3, studentList.size());
+      }
+  }
+  ```
+05-2 웹과 모바일서비스 개발
 
 
 
@@ -2749,11 +3109,6 @@ public class StudentAuthenticationToken implements Authentication {
 
 
 
-
-
-
-
-  
 
 
 ## Bearer 토큰

@@ -2741,7 +2741,7 @@ public class StudentAuthenticationToken implements Authentication {
   - ``StudentAuthenticationProvider``의 ``afterPropertiesSet()``를 수정하고, ``getMyStudentList()``를 구현
   - ``Web``는 ``CustomLoginFilter`` 사용
     - ``TeacherAuthenticationToken``과 ``StudentAuthenticationToken``로 접근
-    -``UsernamePasswordAuthenticationToken``로 접근하도록 코딩 가능
+    - ``UsernamePasswordAuthenticationToken``로도 접근하도록 코딩 가능
   - ``Mobile``는 ``BasicAuthenticationFilter`` 사용
     -``UsernamePasswordAuthenticationToken``로 접근
   ```java
@@ -3019,7 +3019,7 @@ public class StudentAuthenticationToken implements Authentication {
   ```
 - Step 05. ``Web``와 ``SPA(Mobile)` Filter Chain의 우선 순위 설정  
   - ``@Order`` annotation을 사용하여 ``SPA(Mobile)``를 ``Web`` 보다 우선 순위에 둠
-    - ``SPA(Mobile)``의 ``http.antMatcher("/api/**")``로 먼저 필터링
+    - ``SPA(Mobile)``의 ``http.antMatcher("/api/**")``로 먼저 필터링하기 때문
   ```java
   package com.sp.fc.web.config;
   ....
@@ -3090,7 +3090,22 @@ public class StudentAuthenticationToken implements Authentication {
       }
   }
   ```
-05-2 웹과 모바일서비스 개발
+### 웹과 모바일서비스 개발
+- 상황
+  - 웹으로 잘 만든 사이트를 모바일로도 서비스해야 한다
+  - 그런데, 모바일 클라이언트 브라우저를 이용한 하이브리드 방식으로 개발을 한다 (세션이용이 가능함)
+  - 그런데, 시간이 없어서 JWT 토큰 기반으로 만들기가 어렵다
+  - Basic 토큰을 이용해 기존 서비스를 api로 이용하고 싶다
+- 시나리오
+  - 선생님과 학생이 각각 로그인을 한다
+  - 선생님은 모바일을 통해 학생 리스트를 조회할 수 있다
+#### 구현하기
+- 멀티 체인을 구성해 서비스를 서비스 한다.
+  ![fig-11-multichain](./images/fig-11-multichain.png)
+- 웹 리소스를 재사용하기 위해 student-teacher 웹모듈을 만든다
+
+
+"05-2 웹과 모바일서비스 개발"
 
 
 

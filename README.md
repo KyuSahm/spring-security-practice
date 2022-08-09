@@ -3103,19 +3103,16 @@ public class StudentAuthenticationToken implements Authentication {
 - 멀티 체인을 구성해 서비스를 서비스 한다.
   ![fig-11-multichain](./images/fig-11-multichain.png)
 - 웹 리소스를 재사용하기 위해 student-teacher 웹모듈을 만든다
-
-
-"05-2 웹과 모바일서비스 개발"
-
-
-
-
-
-
-
-
-
-
+#### 실습
+- Step 01. ``login-custom-filter`` 모듈을 재활용해 보자
+  - 최상위 ``web`` 폴더 아래에 ``student-teacher`` 폴더를 생성 후, gradle 새로고침
+    - ``src`` 폴더와 build.gradle이 새로 생성됨
+  - 최상위 ``server`` 폴더 아래의 ``web-common.gradle``를 ``web`` 폴더 아래로 복사
+  - ``web/student-teacher/build.gradle`` 파일에서 ``web-common.gradle``를 임포트 함
+    ```groovy
+    apply from: "../web-common.gradle"
+    ```
+"05-2 웹과 모바일서비스 개발": 02:54
 
 
 
@@ -3126,6 +3123,13 @@ public class StudentAuthenticationToken implements Authentication {
 
 
 
-## Bearer 토큰
-- ``JWT Token``
-- ``Opaque Token``
+
+
+
+
+
+
+
+
+
+

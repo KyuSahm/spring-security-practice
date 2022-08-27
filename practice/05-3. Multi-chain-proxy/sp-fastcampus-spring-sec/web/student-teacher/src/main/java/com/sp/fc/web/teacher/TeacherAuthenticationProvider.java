@@ -14,15 +14,25 @@ import java.util.HashMap;
 import java.util.Set;
 
 @Component
-public class TeacherManager implements AuthenticationProvider, InitializingBean {
+public class TeacherAuthenticationProvider implements AuthenticationProvider, InitializingBean {
 
     private HashMap<String, Teacher> teacherDB = new HashMap<>();
 
     @Override
     public Authentication authenticate(Authentication authentication) throws AuthenticationException {
-        TeacherAuthenticationToken token = (TeacherAuthenticationToken) authentication;
-        if(teacherDB.containsKey(token.getCredentials())){
-            Teacher teacher = teacherDB.get(token.getCredentials());
+        if (authentication instanceof TeacherAuthenticationToken) {
+            TeacherAuthenticationToken token = (TeacherAuthenticationToken) authentication;
+            return getAuthenticationToken(token.getCredentials());
+        } else if (authentication instanceof UsernamePasswordAuthenticationToken) {
+            UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) authentication;
+            return getAuthenticationToken(token.getPrincipal().toString());
+        }
+        return null;
+    }
+
+    private Authentication getAuthenticationToken(String key) {
+        if (teacherDB.containsKey(key)) {
+            Teacher teacher = teacherDB.get(key);
             return TeacherAuthenticationToken.builder()
                     .principal(teacher)
                     .details(teacher.getUsername())
@@ -34,15 +44,16 @@ public class TeacherManager implements AuthenticationProvider, InitializingBean 
 
     @Override
     public boolean supports(Class<?> authentication) {
-        return authentication == TeacherAuthenticationToken.class;
+        return authentication == TeacherAuthenticationToken.class ||
+                authentication == UsernamePasswordAuthenticationToken.class;
     }
 
     @Override
     public void afterPropertiesSet() throws Exception {
         Set.of(
                 new Teacher("choi", "최선생", Set.of(new SimpleGrantedAuthority("ROLE_TEACHER")))
-        ).forEach(s->
-            teacherDB.put(s.getId(), s)
+        ).forEach(s ->
+                teacherDB.put(s.getId(), s)
         );
     }
 }

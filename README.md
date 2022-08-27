@@ -3103,33 +3103,318 @@ public class StudentAuthenticationToken implements Authentication {
 - 멀티 체인을 구성해 서비스를 서비스 한다.
   ![fig-11-multichain](./images/fig-11-multichain.png)
 - 웹 리소스를 재사용하기 위해 student-teacher 웹모듈을 만든다
-#### 실습
-- Step 01. ``login-custom-filter`` 모듈을 재활용해 보자
-  - 최상위 ``web`` 폴더 아래에 ``student-teacher`` 폴더를 생성 후, gradle 새로고침
-    - ``src`` 폴더와 build.gradle이 새로 생성됨
-  - 최상위 ``server`` 폴더 아래의 ``web-common.gradle``를 ``web`` 폴더 아래로 복사
-  - ``web/student-teacher/build.gradle`` 파일에서 ``web-common.gradle``를 임포트 함
+#### 실습 (``05-3. Multi-chain-proxy``)
+- Step 01. ``server-login-custom-filter`` 모듈을 재활용해서 ``web-student-teacher`` 모듈 생성
+  - 최상위 ``web`` 폴더 아래에 ``student-teacher`` 폴더를 생성한 후, ``gradle`` 새로고침
+    - ``src`` 폴더와 ``build.gradle``이 새로 생성됨 (by ``settings.gradle``)
+  - 최상위 ``server`` 폴더 아래의 ``web-common.gradle``를 최상위 ``web`` 폴더 아래로 복사
+  - ``web/student-teacher/build.gradle`` 파일에서 ``web-common.gradle``를 임포트
     ```groovy
     apply from: "../web-common.gradle"
     ```
-"05-2 웹과 모바일서비스 개발": 02:54
+  - ``server/login-custom-filter/src/main/resources``의 ``static``와 ``templates``를 ``web/student-teacher/src/main//resources``로 이동
+    - ``server-login-custom-filter`` 모듈이 해당 파일들을 참조하도록 ``server/login-custom-filter/src/main/resources/application.yml``에 아래의 설정을 추가
+      ```groovy
+      server:
+        port: 9052
+
+      spring:
+        thymeleaf:
+          prefix: classpath:/templates/
+          cache: false
+          check-template-location: true
+      ```
+  - ``server-login-custom-filter`` 아래의 ``student``와 ``teacher`` 패키지와 클래스 파일들을 ``web/student-teacher``으로 이동
+    - 패키지와 클래스 파일들이 이동하였으므로, ``server/login-custom-filter`` 모듈이 컴파일 에러가 발생
+      - ``server/login-custom-filter/build.gradle`` 파일에 모듈간의 의존성을 추가해서 해결
+        ```groovy
+        apply from: "../web-common.gradle"
+
+        dependencies {
+            compile project(":web-student-teacher")
+        }
+        ```
+  - ``server/login-custom-filter``의 ``controller`` 패키지를 ``web-student-teacher``로 이동
+  - ``server-login-custom-filter`` 모듈을 부팅한 후, 접속해서 기존의 모듈도 잘 동작하는지 확인
+  ![login_custom_filter_01](./images/login_custom_filter_01.png)  
+- Step 02. ``server-login-multi-chain`` 모듈도 ``web-student-teacher`` 모듈을 이용해서 동작하도록 설정
+  - ``server-login-custom-filter`` 아래의 ``config`` 소스들을 ``server-login-multi-chain`` 아래의 ``config``로 복사
+  - ``build.gradle``파일에 모듈 의존성과 공통 gradle 파일(``web-common.gradle``) 임포트
+    ```groovy
+    apply from: "../web-common.gradle"
+
+    dependencies {
+        compile project(":web-student-teacher")
+    }
+    ```
+  - ``server-login-multi-chain`` 모듈이 해당 파일들을 참조하도록 ``server/login-multi-chain/src/main/resources/application.yml``에 아래의 설정을 추가
+      ```groovy
+      server:
+        port: 9054
+
+      spring:
+        thymeleaf:
+          prefix: classpath:/templates/
+          cache: false
+          check-template-location: true
+      ```
+  - ``server-login-multi-chain`` 모듈을 부팅한 후, 접속해서 잘 동작하는지 확인
+  ![login_multi_chain_01](./images/login_multi_chain_01.png)
+- Step 03. ``web-student-teacher`` 모듈에서의 ``Student``와 ``Teacher``간의 관계 설정
+  - ``Student`` 클래스에 ``teacherId`` 속성 추가
+    ```java
+    package com.sp.fc.web.student;
+    ....
+    public class Student {
+        ....
+        private String teacherId;
+    }
+    ```
+  - ``StudentAuthenticationProvider`` 클래스에 특정 ``Teacher``의 학생 리스트를 가져오는 메소드 추가
+    ```java
+    package com.sp.fc.web.student;
+    ....
+    @Component
+    public class StudentAuthenticationProvider implements AuthenticationProvider, InitializingBean {
+        ....
+        public List<Student> getStudents(String teacherId) {
+            return studentDB.values()
+                    .stream()
+                    .filter(s -> s.getTeacherId().equals(teacherId))
+                    .collect(Collectors.toList());
+        }
+
+        @Override
+        public void afterPropertiesSet() throws Exception {
+            Set.of(
+                    new Student("hong", "홍길동", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT")), "choi"),
+                    new Student("kang", "강아지", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT")), "choi"),
+                    new Student("rang", "호랑이", Set.of(new SimpleGrantedAuthority("ROLE_STUDENT")), "choi")
+            ).forEach(s->
+                studentDB.put(s.getId(), s)
+            );
+        }
+    }
+    ```
+  - 특정 Teacher의 Student List를 가져오는 Controller 메소드 정의
+    ```java
+    package com.sp.fc.web.controller;
+    ....
+    @Controller
+    @RequiredArgsConstructor
+    @RequestMapping("/teacher")
+    public class TeacherController {
+        private final StudentAuthenticationProvider studentAuthenticationProvider;
+
+        @PreAuthorize("hasAnyAuthority('ROLE_TEACHER')")
+        @GetMapping("/main")
+        public String main(@AuthenticationPrincipal Teacher teacher, Model model)
+        {
+            model.addAttribute("studentList", studentAuthenticationProvider.getStudents(teacher.getId()));
+            return "TeacherMain";
+        }
+    }
+    ```
+  - ``TeacherMain.html`` template 수정
+    ```html
+    <!DOCTYPE html>
+    ....
+    <body>
+    <div class="container center-contents">
+        <div class="row">
+            <h1 class="title display-5 text-info"> Teacher  페이지 </h1>
+        </div>
+        <div class="links">
+            ....
+            <div class="student-list col-6">
+                <table class="table">
+                    <tr>
+                        <th>아이디</th>
+                        <th>이름</th>
+                    </tr>
+                    <tr th:each="student:${studentList}" th:object="${student}">
+                        <td th:text="*{id}"> hong </td>
+                        <td th:text="*{username}"> 홍길동 </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script th:src="@{/js/bootstrap.js}" />
+    </body>
+    </html>
+    ```
+  - 결과 화면
+  ![student_teacher_01](./images/student_teacher_01.png)
+- Step 04. 모바일용 ``Teacher`` Controller 정의
+  ```java
+  package com.sp.fc.web.controller;
+  ....
+  @RestController
+  @RequiredArgsConstructor
+  @RequestMapping("/api/teacher")
+  public class MobileTeacherController {
+      private final StudentAuthenticationProvider studentAuthenticationProvider;
+
+      @PreAuthorize("hasAnyAuthority('ROLE_TEACHER')")
+      @GetMapping("/students")
+      public List<Student> getStudents(@AuthenticationPrincipal Teacher teacher)
+      {
+          return studentAuthenticationProvider.getStudents(teacher.getId());
+      }
+  }
+  ```
+- Step 05. 모바일용 Security Filter Chain 구성
+  - ``SecurityConfiguration``를 복사하여 ``MobileSecurityConfiguration`` 생성
+  - ``@EnableWebSecurity``와 ``@EnableGlobalMethodSecurity``은 중복 선언이므로, ``@Configuration``으로 선언
+  - ``@Order`` Annotation을 통한 우선 순위 조정
+    - ``MobileSecurityConfiguration``에 대해 ``@Order(1)``
+      - ``/api/**`` 형태는 모바일 Security Chain로 처리하고, 나머지 주소들은 일반 Security Chain으로 처리
+    - ``SecurityConfiguration``에 대해 ``@Order(2)``
+  - csrf filter disable
+  - form login을 없애고, Basic Authentification을 사용
+    - ``http.httpBasic()``
+    - 기본적으로 ``BasicAuthenticationFilter``가 동작
+      - ``BasicAuthenticationFilter``는 ``UsernamePasswordAuthenticationToken``를 생성해서 인증을 시도
+      - ``StudentAuthenticationProvider``와 ``TeacherAuthenticationProvider``가 ``UsernamePasswordAuthenticationToken``도 처리할 수 있도록 수정이 필요 
+  - Static Resource를 관리하는 ``WebSecurity``도 필요 없음  
+  ```java
+  package com.sp.fc.web.config;
+  ....
+  @Order(1)
+  @Configuration
+  public class MobileSecurityConfiguration extends WebSecurityConfigurerAdapter {
 
 
+      private final StudentAuthenticationProvider studentAuthenticationProvider;
+      private final TeacherAuthenticationProvider teacherAuthenticationProvider;
+
+      public MobileSecurityConfiguration(StudentAuthenticationProvider studentAuthenticationProvider,
+                                        TeacherAuthenticationProvider teacherManager) {
+          this.studentAuthenticationProvider = studentAuthenticationProvider;
+          this.teacherAuthenticationProvider = teacherManager;
+      }
 
 
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.authenticationProvider(studentAuthenticationProvider);
+          auth.authenticationProvider(teacherAuthenticationProvider);
+      }
 
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http
+                  .antMatcher("/api/**")
+                  .csrf().disable()
+                  .authorizeRequests(request->
+                          request.anyRequest().authenticated()
+                  )
+                  .httpBasic()
+                  ;
+      }
+  }
 
+  package com.sp.fc.web.student;
+  ....
+  @Component
+  public class StudentAuthenticationProvider implements AuthenticationProvider, InitializingBean {
+      private HashMap<String, Student> studentDB = new HashMap<>();
 
+      @Override
+      public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+          if (authentication instanceof StudentAuthenticationToken) {
+              StudentAuthenticationToken token = (StudentAuthenticationToken) authentication;
+              return getAuthenticationToken(token.getCredentials());
+          } else if (authentication instanceof UsernamePasswordAuthenticationToken) {
+              UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) authentication;
+              return getAuthenticationToken(token.getPrincipal().toString());
+          }
+          return null;
+      }
 
+      private Authentication getAuthenticationToken(String key) {
+          if (studentDB.containsKey(key)) {
+              Student student = studentDB.get(key);
+              return StudentAuthenticationToken.builder()
+                      .principal(student)
+                      .details(student.getUsername())
+                      .authenticated(true)
+                      .authorities(student.getRole())
+                      .build();
+          }
+          return null;
+      }
 
+      @Override
+      public boolean supports(Class<?> authentication) {
+          return authentication == StudentAuthenticationToken.class ||
+                  authentication == UsernamePasswordAuthenticationToken.class;
+      }
+      ....
+  }
 
+  package com.sp.fc.web.teacher;
+  ....
+  @Component
+  public class TeacherAuthenticationProvider implements AuthenticationProvider, InitializingBean {
+      private HashMap<String, Teacher> teacherDB = new HashMap<>();
 
+      @Override
+      public Authentication authenticate(Authentication authentication) throws AuthenticationException {
+          if (authentication instanceof TeacherAuthenticationToken) {
+              TeacherAuthenticationToken token = (TeacherAuthenticationToken) authentication;
+              return getAuthenticationToken(token.getCredentials());
+          } else if (authentication instanceof UsernamePasswordAuthenticationToken) {
+              UsernamePasswordAuthenticationToken token = (UsernamePasswordAuthenticationToken) authentication;
+              return getAuthenticationToken(token.getPrincipal().toString());
+          }
+          return null;
+      }
 
+      private Authentication getAuthenticationToken(String key) {
+          if (teacherDB.containsKey(key)) {
+              Teacher teacher = teacherDB.get(key);
+              return TeacherAuthenticationToken.builder()
+                      .principal(teacher)
+                      .details(teacher.getUsername())
+                      .authenticated(true)
+                      .build();
+          }
+          return null;
+      }
 
+      @Override
+      public boolean supports(Class<?> authentication) {
+          return authentication == TeacherAuthenticationToken.class ||
+                  authentication == UsernamePasswordAuthenticationToken.class;
+      }
+      ....
+  }
+  ```
+- Step 06. 모바일 Security Chain용 테스트 코드 작성
+  - ``TestRestTemplate(String username, String password, HttpClientOption... httpClientOptions)``를 사용하면 ``BasicAuthenticationFilter``을 사용
+  ```java
+  package com.sp.fc.web;
+  ....
+  @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+  public class MultiChainProxyTest {
+      @LocalServerPort
+      private int port;
+      TestRestTemplate testRestTemplate = new TestRestTemplate("choi", "1");
 
+      @DisplayName("1. 학생 리스트를 조회")
+      @Test
+      void test_1() {
+          // choi로 로그인해서 학생 리스트를 내려 받음
+          ResponseEntity<List<Student>> response =
+                  testRestTemplate.exchange("http://localhost:" + port + "/api/teacher/students",
+                          HttpMethod.GET, null, new ParameterizedTypeReference<List<Student>>() {});
+          assertNotNull(response.getBody());
+          assertEquals(3, response.getBody().size());
+      }
 
-
-
-
-
-
+  }
+  ```
+## DaoAuthenticationProvider와 UserDetailsService
+00:18

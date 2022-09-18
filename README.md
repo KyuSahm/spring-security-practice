@@ -3421,9 +3421,181 @@ public class StudentAuthenticationToken implements Authentication {
 
 실제로 스프링 시큐리티를 써서 서비스를 만들라고 하면, 대부분의 개발자들은 UserDetails를 구현한 User 객체와 UserDetailsService 부터 만듭니다. 왜냐하면, UserDetailsService와 UserDetails 구현체만 구현하면 스프링 시큐리티가 나머지는 쉽게 쓸 수 있도록 도움을 많이 주기 때문입니다. 그런 다음, 나머지 부분은 하나하나 설정을 배워가면서 처리하는 되기 때문이죠.   
 
-``UsernamePasswordAuthenticationToken``에 username과 password가 실려서 오면, 해당 정보를 이용해서 ``DaoAuthenticationProvider``에서 인증을 하는 방식입니다. 그렇다면 우리도 UserDetailsService와 UserDetails를 구현해 보도록 하겠습니다.
+``UsernamePasswordAuthenticationToken``에 username과 password가 실려서 오면, 해당 정보를 이용해서 ``DaoAuthenticationProvider``에서 인증을 하는 방식입니다. 개발자는 ``UserDetailsService``와 ``UserDetails``를 구현해서 사용하면 됩니다.
 
-## 실습하기
+![fig-12-userdetails](./images/fig-12-userdetails.png)
+
+### 실습하기 (06-1. UserDetails)
+- Step 01. 해당 폴더의 ``build.gradle``을 열고, ``server-login-userdetails`` 모듈에서 작업을 시작
+- Step 02. ``server-login-basic`` 모듈의 내용을 재활용해서 ``web-user-admin``에 공통적인 부분을 옮겨보자
+  - 02-1. 루트의 ``web`` 폴더 아래에 ``user-admin`` 폴더 생성
+  - 02-2. 루트의 ``comp`` 폴더 아래에 ``user-admin`` 폴더 생성
+  - 02-3. Gradle을 새로 고침하면, 해당 폴더들 아래에 필요한 Resource들이 생성
+  - 02-4. ``server-login-basic/src/main/resources``의 ``static``와 ``templates`` 폴더를 ``web-user-admin/src/main/resources`` 아래로 이동
+  - 02-5. ``server-login-basic/src/main/java``의 ``HomeController.java``를 ``web-user-admin/src/main/java``로 이동
+  - 02-6. ``web-user-admin/build.gradle``의 파일 내용을 수정해서 상위의 ``web-common.gralde``을 임포트
+    ```groovy
+    apply from: "../web-common.gradle"
+
+    dependencies {
+
+    }
+    ```
+- Step 03. ``server-logic-basic``가 bootjar가 되도록 설정
+  - 03-1. ``server-logic-basic/src/main/resources/application.yml``에서 ``thymeleaf``에 대한 설정을 추가해서 ``web-user-admin``의 templates 파일들을 볼 수 있도록 설정
+    ```yaml
+    server:
+    port: 9051
+
+    spring:
+      devtools:
+        livereload:
+          enabled: true
+        restart:
+          enabled: true
+
+      thymeleaf:
+        prefix: classpath:/templates/
+        cache: false
+        check-template-location: true
+    ```
+  - 03-2. ``server-logic-basic/build.gradle``에서 ``web-user-admin`` 모듈에 대한 의존성 추가
+    ```groovy
+    dependencies {
+
+        implementation("$boot:spring-boot-starter-web")
+        implementation("$boot:spring-boot-starter-thymeleaf")
+        implementation("org.thymeleaf.extras:thymeleaf-extras-springsecurity5")
+        implementation("nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect")
+
+        compile project(":web-user-admin")
+    }
+    ```
+- Step 04. ``server-logic-userdetails``가 bootjar가 되도록 설정
+  - 04-1. ``server-logic-basic/src/main/resources/application.yml``의 내용을 복사해서 ``server-logic-userdetails/src/main/resources/application.yml``을 생성
+    - ``port``를 9055로 변경
+    ```yaml
+    server:
+    port: 9055
+
+    spring:
+      devtools:
+        livereload:
+          enabled: true
+        restart:
+          enabled: true
+
+      thymeleaf:
+        prefix: classpath:/templates/
+        cache: false
+        check-template-location: true
+    ```
+  - 04-2. ``server-logic-basic/build.gradle``의 내용에 ``comp-user-admin`` module dependency를 추가해서 ``server-logic-userdetails/build.gradle`` 생성
+    - ``web-common.gradle``을 이용해서 단순화
+    - ``comp-user-admin``: user와 authority 클래스를 정의하려고 함
+    ```groovy
+    apply from: "../web-common.gradle"
+
+    dependencies {
+        compile project(":comp-user-admin")
+        compile project(":web-user-admin")
+    }
+    ```  
+- Step 05. ``comp-user-admin``에 User Domain 객체를 정의
+  - 05-1. ``comp-user-admin/build.gradle``에 ``Spring Data JPA`` 모듈 의존성 추가
+    ```groovy
+    dependencies {
+      implementation("$boot:spring-boot-starter-data-jpa")
+    }
+    ```
+  - 05-2. ``org.springframework.security.core.userdetails.UserDetails``를 구현한 ``SpUser`` 클래스를 정의
+    ```java
+    package com.sp.fc.user.domain;
+    ....
+    @Getter
+    @NoArgsConstructor
+    @Builder
+    @Entity
+    @Table(name="sp_user")
+    public class SpUser implements UserDetails {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        private Long userId;
+
+        @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
+        @JoinColumn(name = "user_id", foreignKey =  @ForeignKey(name = "user_id"))
+        private Set<SpAuthority> authorities;
+
+        private String email;
+        private String password;
+        private boolean enabled;
+
+        @Override
+        public String getUsername() {
+            return email;
+        }
+
+        @Override
+        public boolean isAccountNonExpired() {
+            return enabled;
+        }
+
+        @Override
+        public boolean isAccountNonLocked() {
+            return enabled;
+        }
+
+        @Override
+        public boolean isCredentialsNonExpired() {
+            return enabled;
+        }
+    }
+    ```
+  - 05-3. ``org.springframework.security.core.GrantedAuthority``를 구현한 ``SpAuthority`` 클래스를 정의
+    - ``@IdClass`` annotation을 이용하여 Composite Key를 Primary Key로 사용하도록 설정
+    ```java
+    package com.sp.fc.user.domain;
+    ....
+
+    @Getter
+    @NoArgsConstructor
+    @Builder
+    @Entity
+    @Table(name = "sp_user_authority")
+    @IdClass(SpAuthority.class)
+    public class SpAuthority implements GrantedAuthority {
+        @Id
+        private Long userId;
+        @Id
+        private String authority;
+    }
+    ```
+
+  14:30  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+해당 폴더의 ``build.gradle``을 열고, ``login-userdetails`` 프로젝트에서 작업을 시작
 - ``login-basic`` 프로젝트의 리소스와 컨트롤러를 재사용하겠습니다.
 ![fig-12-userdetails](./images/fig-12-userdetails.png)
 - SpUser 객체와 SpAuthority 대한 Entity 객체 정의는 아래와 같이 정의

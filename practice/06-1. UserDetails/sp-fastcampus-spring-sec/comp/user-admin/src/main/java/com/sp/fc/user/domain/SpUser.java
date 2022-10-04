@@ -1,14 +1,13 @@
 package com.sp.fc.user.domain;
 
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import javax.persistence.*;
 import java.util.Set;
 
-@Getter
+@Data
+@AllArgsConstructor
 @NoArgsConstructor
 @Builder
 @Entity
@@ -16,6 +15,7 @@ import java.util.Set;
 public class SpUser implements UserDetails {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name="user_id")
     private Long userId;
 
     @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)

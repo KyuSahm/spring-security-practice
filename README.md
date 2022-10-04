@@ -3501,7 +3501,7 @@ public class StudentAuthenticationToken implements Authentication {
         compile project(":web-user-admin")
     }
     ```  
-- Step 05. ``comp-user-admin``에 User Domain 객체를 정의
+- Step 05. ``comp-user-admin``에 User Domain 객체, 서비스 및 레파지토리 인터페이스를 정의
   - 05-1. ``comp-user-admin/build.gradle``에 ``Spring Data JPA`` 모듈 의존성 추가
     ```groovy
     dependencies {
@@ -3512,7 +3512,8 @@ public class StudentAuthenticationToken implements Authentication {
     ```java
     package com.sp.fc.user.domain;
     ....
-    @Getter
+    @Data
+    @AllArgsConstructor
     @NoArgsConstructor
     @Builder
     @Entity
@@ -3520,6 +3521,7 @@ public class StudentAuthenticationToken implements Authentication {
     public class SpUser implements UserDetails {
         @Id
         @GeneratedValue(strategy = GenerationType.IDENTITY)
+        @Column(name="user_id")
         private Long userId;
 
         @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
@@ -3554,10 +3556,10 @@ public class StudentAuthenticationToken implements Authentication {
   - 05-3. ``org.springframework.security.core.GrantedAuthority``를 구현한 ``SpAuthority`` 클래스를 정의
     - ``@IdClass`` annotation을 이용하여 Composite Key를 Primary Key로 사용하도록 설정
     ```java
-    package com.sp.fc.user.domain;
-    ....
+    package com.sp.fc.user.domain;    ....
 
-    @Getter
+    @Data
+    @AllArgsConstructor
     @NoArgsConstructor
     @Builder
     @Entity
@@ -3565,131 +3567,182 @@ public class StudentAuthenticationToken implements Authentication {
     @IdClass(SpAuthority.class)
     public class SpAuthority implements GrantedAuthority {
         @Id
+        @Column(name="user_id")
         private Long userId;
         @Id
         private String authority;
     }
     ```
+  - 05-4. ``SpUser`` Entity를 위한 Repository Interface를 정의
+    - Email을 이용해서 SpUser를 찾아오는 메소드 정의
+    ```java
+    package com.sp.fc.user.repository;
+    ....
 
-  14:30  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-해당 폴더의 ``build.gradle``을 열고, ``login-userdetails`` 프로젝트에서 작업을 시작
-- ``login-basic`` 프로젝트의 리소스와 컨트롤러를 재사용하겠습니다.
-![fig-12-userdetails](./images/fig-12-userdetails.png)
-- SpUser 객체와 SpAuthority 대한 Entity 객체 정의는 아래와 같이 정의
-
-```java
-@Entity
-@Table(name="sp_user")
-public class SpUser implements UserDetails {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long userId;
-
-    private String email;
-
-    private String password;
-
-    @OneToMany(fetch = FetchType.EAGER, cascade = CascadeType.ALL)
-    @JoinColumn(name = "user_id", foreignKey = @ForeignKey(name="user_id"))
-    private Set<SpAuthority> authorities;
-
-    private boolean enabled;
-
-    @Override
-    public String getUsername() {
-        return email;
+    public interface SpUserRepository extends JpaRepository<SpUser, Long> {
+        Optional<SpUser> findSpUserByEmail(String email);
     }
+    ```
+  - 05-5. ``UserDetailsService``를 구현한 ``SpUserService`` 서비스를 정의
+    - ``loadUserByUsername(String username)``만 필수 구현 메소드
+    - 나머지는 별도의 필요에 의해 작성한 메소드
+    ```java
+    package com.sp.fc.user.service;
+    ...
 
-    @Override
-    public boolean isAccountNonExpired() {
-        return enabled;
+    @Service
+    @Transactional
+    @RequiredArgsConstructor
+    public class SpUserService implements UserDetailsService {
+        private final SpUserRepository spUserRepository;
+
+        @Override
+        public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+            return spUserRepository.findSpUserByEmail(username)
+                    .orElseThrow(() -> new UsernameNotFoundException(username));
+        }
+
+        public Optional<SpUser> findUser(String email) {
+            return spUserRepository.findSpUserByEmail(email);
+        }
+
+        public SpUser save(SpUser user) {
+            return spUserRepository.save(user);
+        }
+
+        public void addAuthority(Long userId, String authority) {
+            spUserRepository.findById(userId).ifPresent(user -> {
+                SpAuthority newRole = new SpAuthority(user.getUserId(), authority);
+                if (user.getAuthorities() == null) {
+                    HashSet<SpAuthority> authorities = new HashSet<>();
+                    authorities.add(newRole);
+                    user.setAuthorities(authorities);
+                    save(user);
+                } else if(!user.getAuthorities().contains(newRole)) {
+                    HashSet<SpAuthority> authorities = new HashSet<>();
+                    authorities.addAll(user.getAuthorities());
+                    authorities.add(newRole);
+                    user.setAuthorities(authorities);
+                    save(user);
+                }
+            });
+        }
+
+        public void removeAuthority(Long userId, String authority) {
+            spUserRepository.findById(userId).ifPresent(user -> {
+                if (user.getAuthorities() == null) {
+                    return;
+                }
+
+                SpAuthority targetRole = new SpAuthority(user.getUserId(), authority);
+                if (user.getAuthorities().contains(targetRole)) {
+                    user.setAuthorities(
+                            user.getAuthorities().stream()
+                                    .filter(auth -> !auth.equals(targetRole))
+                                    .collect(Collectors.toSet())
+                    );
+                    save(user);
+                }
+            });
+        }
     }
+    ```
+- Step 06. ``server-login-userdetails``에 ``Security Configuration``을 구현
+  - Step 06-1. ``server-login-basic``의 ``com.sp.fc.web.config.SecurityConfig``를 복사해 온 후, 수정
+    - ``AuthenticationManagerBuilder``의 ``userDetailsService`` 메소드의 인자로 해당 서비스를 전달하면 됨
+    - ``H2 Database``로 테스트를 진행하기 때문에, ``/h2-console`` URL Path도 열어줌
+      - ``web.ignoring().requestMatchers()``에 ``PathRequest.toH2Console()`` 인자를 추가
+      
+    ```java
+    package com.sp.fc.web.config;
+    ....
+    @RequiredArgsConstructor
+    @EnableWebSecurity(debug = true)
+    @EnableGlobalMethodSecurity(prePostEnabled = true)
+    public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
-    @Override
-    public boolean isAccountNonLocked() {
-        return enabled;
+        private final SpUserService spUserService;
+
+        @Override
+        protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+            auth.userDetailsService(spUserService);
+        }
+        ......
+
+        @Override
+        public void configure(WebSecurity web) throws Exception {
+            web.ignoring()
+                    .requestMatchers(
+                            PathRequest.toStaticResources().atCommonLocations(),
+                            PathRequest.toH2Console()
+                    )
+            ;
+        }
+
     }
+    ```
+  - Step 06-2. ``com.sp.fc.web.config.SecurityConfig`` 클래스에서 다른 모듈의 클래스를 읽을 수 있도록 처리
+    - ``SpUserService``를 읽도록, ``@SpringBootApplication``의 ``scanBasePackages`` 속성을 추가
+    - ``Entity`` 클래스를 읽도록, ``@EntityScan``의 ``basePackages`` 속성을 추가
+    - ``Repository`` 클래스를 읽도록, ``@EnableJpaRepositories``의 ``basePackages`` 속성을 추가
+    ```java
+    package com.sp.fc.web;
+    ....
+    @SpringBootApplication(scanBasePackages = {"com.sp.fc.user"})
+    @EntityScan(basePackages = {"com.sp.fc.user.domain"})
+    @EnableJpaRepositories(basePackages = {"com.sp.fc.user.repository"})
+    public class UserDetailsTestApplication {
 
-    @Override
-    public boolean isCredentialsNonExpired() {
-        return enabled;
+        public static void main(String[] args) {
+            SpringApplication.run(UserDetailsTestApplication.class, args);
+        }
+
     }
+    ```
+  - Step 06-3. ``build.gradle`` 수정
+    - ``runtime`` 테스트를 위한 h2 database 라이브러리 의존성 추가
+    - ``@EntityScan``과 ``@EnableJpaRepositories`` Annotation을 위한 jpa 라이브러리 의존성 추가
+    ```groovy
+    apply from: "../web-common.gradle"
 
-}
-```
+    dependencies {
+        compile project(":comp-user-admin")
+        compile project(":web-user-admin")
 
-```java
+        implementation("$boot:spring-boot-starter-data-jpa")
 
-@Entity
-@Table(name="sp_user_authority")
-@IdClass(SpAuthority.class)
-public class SpAuthority implements GrantedAuthority {
+        runtime("com.h2database:h2")
+    }
+    ```
+  - Step 06-4. ``application.yml``에 h2 database관련 속성을 추가
+    ```yml
+    server:
+      port: 9055
 
-    @Id
-    @Column(name="user_id")
-    private Long userId;
+    spring:
+      h2:
+        console:
+          enabled: true
+          path: /h2-console
 
-    @Id
-    private String authority;
+      datasource:
+        url: jdbc:h2:mem:userdetails-test;
+        driverClassName: org.h2.Driver
+        username: sa
+        password:
 
+      jpa:
+        database-platform: org.hibernate.dialect.H2Dialect
 
-}
+      devtools:
+        livereload:
+          enabled: true
+        restart:
+          enabled: true
 
-
-```
-
-## h2 DB 설정하기
-
-```groovy
-
-dependencies{
-  runtime("com.h2database:h2")
-}
-```
-
-```yml
-spring:
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
-
-  datasource:
-    url: jdbc:h2:mem:userdetails-test;
-    driverClassName: org.h2.Driver
-    username: sa
-    password:
-
-  jpa:
-    database-platform: org.hibernate.dialect.H2Dialect
-```
-
-## 실습 하기
-
-- login-userdetails 폴더를 만든다.
-- user-admin comp 모듈을 만들고, SpUser, SpAuthority Entity와 Repository 를 만든다.
-- h2 DB 를 세팅한다.
+      thymeleaf:
+        prefix: classpath:/templates/
+        cache: false
+        check-template-location: true
+    ```  
+  23:50 

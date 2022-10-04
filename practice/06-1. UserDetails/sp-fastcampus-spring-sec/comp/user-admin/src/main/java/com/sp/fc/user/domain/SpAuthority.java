@@ -1,16 +1,12 @@
 package com.sp.fc.user.domain;
 
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.springframework.security.core.GrantedAuthority;
 
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.IdClass;
-import javax.persistence.Table;
+import javax.persistence.*;
 
-@Getter
+@Data
+@AllArgsConstructor
 @NoArgsConstructor
 @Builder
 @Entity
@@ -18,6 +14,7 @@ import javax.persistence.Table;
 @IdClass(SpAuthority.class)
 public class SpAuthority implements GrantedAuthority {
     @Id
+    @Column(name="user_id")
     private Long userId;
     @Id
     private String authority;
